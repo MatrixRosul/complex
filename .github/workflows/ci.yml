@@ -1,0 +1,261 @@
+# =============================================================================
+# CI — ганяється на кожен push і PR.
+#
+# Головна ідея тестового джоба: pytest бігає на ЧИСТІЙ БД, піднятій з нуля.
+# Це не «щоб було ізольовано» — це перевірка ADR-022.
+#
+# Наші перші міграції роблять CREATE EXTENSION (pg_trgm, btree_gin, unaccent),
+# CREATE TEXT SEARCH CONFIGURATION uk, CREATE FUNCTION complex_price_uah(),
+# CREATE SEQUENCE order_number_seq. Якби розширення ставились init-скриптом
+# образу postgres (а не міграцією), вони існували б рівно в одній базі й рівно
+# один раз — а тестова база pytest-django клонується з template1, де їх немає.
+# Перший же індекс з opclasses=['gin_trgm_ops'] упав би з
+# «operator class "gin_trgm_ops" does not exist».
+#
+# Тому крок `migrate` на порожній базі — це і є тест на те, що прод-розгортання
+# з нуля (і відновлення з бекапу, і staging) взагалі можливе.
+# =============================================================================
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Що взагалі є в репо. Фронтенд може бути ще не заскафолджений — тоді його
+  # джоб не має падати, він має не запускатись.
+  # ---------------------------------------------------------------------------
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.check.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: check
+        run: |
+          if [ -f frontend/package.json ]; then
+            echo "frontend=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "frontend=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::frontend/ ще немає — джоб фронтенду пропущено"
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Backend: ruff + mypy
+  # ---------------------------------------------------------------------------
+  backend-lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - name: "uv sync (--frozen: lock мусить збігатися з pyproject)"
+        run: uv sync --frozen
+
+      - name: ruff check
+        run: uv run ruff check .
+
+      - name: ruff format --check
+        run: uv run ruff format --check .
+
+      - name: mypy
+        run: uv run mypy .
+
+  # ---------------------------------------------------------------------------
+  # Backend: міграції на ЧИСТІЙ БД + pytest
+  # ---------------------------------------------------------------------------
+  backend-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    services:
+      postgres:
+        # Прод — 16, локально в розробника — 14 (ARCHITECTURE §5, свідомий ризик).
+        # CI тримаємо на прод-версії: він — арбітр «поїде на проді чи ні».
+        # ⚠️ Якщо міграція використає щось із PG15+ (nulls_distinct!), CI цього
+        #    НЕ спіймає — спіймає розробник, у якого `migrate` впаде локально.
+        #    Саме тому ADR-016 забороняє nulls_distinct на рівні коду, а не CI.
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: complex_ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      DJANGO_SETTINGS_MODULE: config.settings.local
+      DJANGO_SECRET_KEY: ci-insecure-key
+      DJANGO_DEBUG: "False"
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/complex_ci
+      REDIS_URL: redis://localhost:6379
+      REDIS_CACHE_URL: redis://localhost:6379/1
+      CELERY_BROKER_URL: redis://localhost:6379/0
+      CELERY_RESULT_BACKEND: redis://localhost:6379/2
+      CELERY_TASK_ALWAYS_EAGER: "True"
+      AXES_ENABLED: "False"
+      USE_R2: "False"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - run: uv sync --frozen
+
+      # --- Ось цей крок і є сенс усього джоба (див. шапку файлу) ---
+      - name: migrate на порожній БД (перевірка CREATE EXTENSION у міграціях)
+        run: uv run python manage.py migrate --noinput
+
+      - name: Розширення й об'єкти зі стану міграцій реально створені
+        run: |
+          uv run python manage.py shell -c "
+          from django.db import connection
+          with connection.cursor() as c:
+              c.execute(\"SELECT extname FROM pg_extension WHERE extname IN ('pg_trgm','btree_gin','unaccent')\")
+              exts = {r[0] for r in c.fetchall()}
+              print('розширення:', sorted(exts))
+              missing = {'pg_trgm','btree_gin','unaccent'} - exts
+              assert not missing, f'міграції не створили розширення: {missing} (ADR-022)'
+          "
+
+      - name: Немає незастосованих makemigrations (модель розійшлась з міграціями)
+        run: uv run python manage.py makemigrations --check --dry-run
+
+      - name: pytest
+        run: |
+          if [ -d tests ]; then
+            uv run pytest --cov --cov-report=term-missing
+          else
+            echo "::warning::backend/tests ще немає — тести пропущено (трек TEST у ROADMAP)"
+          fi
+
+      - name: check --deploy (прод-налаштування без сюрпризів)
+        env:
+          DJANGO_SETTINGS_MODULE: config.settings.prod
+          DJANGO_ALLOWED_HOSTS: complex.ua
+          CSRF_TRUSTED_ORIGINS: https://complex.ua
+          R2_ACCESS_KEY_ID: x
+          R2_SECRET_ACCESS_KEY: x
+        run: uv run python manage.py check --deploy --fail-level WARNING
+
+  # ---------------------------------------------------------------------------
+  # Frontend: lint + build
+  # ---------------------------------------------------------------------------
+  frontend:
+    needs: detect
+    if: needs.detect.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+
+      - run: npm run lint
+
+      - name: tsc --noEmit
+        run: npx tsc --noEmit
+
+      # Збірка — не формальність: саме тут падають помилки типів у RSC,
+      # відсутні generateStaticParams для [locale] і зламані імпорти shadcn.
+      - name: npm run build
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+          NEXT_PUBLIC_SITE_URL: https://complex.ua
+
+  # ---------------------------------------------------------------------------
+  # Інфраструктура: compose і Caddyfile мусять бути валідними ДО деплою.
+  # Зламаний Caddyfile = Caddy не піднявся = сайту немає. Ловити це на VPS —
+  # найдорожчий зі способів.
+  # ---------------------------------------------------------------------------
+  infra:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: docker compose config (підстановка змінних + схема)
+        run: |
+          cp .env.example .env
+          cp infra/images.env.example infra/images.env
+          docker compose \
+            --env-file .env \
+            --env-file infra/images.env \
+            -f infra/docker-compose.yml \
+            config --quiet
+          echo "compose OK"
+
+      - name: Caddyfile — синтаксис і наявність модуля rate_limit
+        run: |
+          # Збираємо той самий образ, що й на проді: `rate_limit` — сторонній
+          # модуль, у ванільному Caddy його немає, і Caddyfile з ним не спарситься.
+          docker build -f infra/Dockerfile.caddy -t complex-caddy:ci infra/
+          docker run --rm \
+            -e SITE_DOMAIN=complex.ua \
+            -e ACME_EMAIL=admin@complex.ua \
+            -e ADMIN_PATH=_adm_test \
+            -v "${{ github.workspace }}/infra/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            complex-caddy:ci caddy validate --config /etc/caddy/Caddyfile
+
+      - name: shellcheck на скрипти інфри
+        run: |
+          sudo apt-get update && sudo apt-get install -y shellcheck
+          shellcheck -S warning infra/scripts/*.sh infra/backup/*.sh
+
+  # ---------------------------------------------------------------------------
+  # Секрети в коді. Дешевий джоб, який одного разу окупить себе повністю.
+  # ---------------------------------------------------------------------------
+  secrets-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

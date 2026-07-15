@@ -1,0 +1,25 @@
+# =============================================================================
+# /etc/cron.d/complex-backup   —  розклад бекапів Complex.  TZ = Europe/Kyiv.
+#
+# WAL їде БЕЗПЕРЕРВНО (archive_command + archive_timeout=300s) — це і дає
+# RPO ≈ 5 хв. Нижче — тільки опорні точки й перевірка.
+#
+# Час підібрано під нічне вікно: синк прайсу 4×/добу, найтихіша година — 02:00–05:00.
+# Формат /etc/cron.d вимагає поле користувача (postgres) — і завершального \n.
+# =============================================================================
+
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Повний бекап — щонеділі о 02:00.
+0 2 * * 0  postgres  /usr/local/bin/backup.sh full  >> /var/log/pgbackrest/cron.log 2>&1
+
+# Різницевий — решту днів о 02:00. Швидкий і дешевий (тільки змінені сторінки).
+0 2 * * 1-6  postgres  /usr/local/bin/backup.sh diff  >> /var/log/pgbackrest/cron.log 2>&1
+
+# RESTORE-DRILL — щопонеділка о 04:00, ОДРАЗУ ПІСЛЯ свіжого повного бекапу.
+# Саме він перетворює «у нас є бекапи» на «у нас є бекапи, які відновлюються».
+0 4 * * 1  postgres  /usr/local/bin/restore-drill.sh  >> /var/log/pgbackrest/cron.log 2>&1
+
+# Ротація власного лог-файлу, щоб він не з'їв диск (docker-логи ротуються окремо).
+0 5 * * 1  postgres  find /var/log/pgbackrest -name '*.log' -size +50M -delete

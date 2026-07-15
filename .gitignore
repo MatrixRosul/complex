@@ -1,0 +1,91 @@
+# =============================================================================
+# Complex
+# =============================================================================
+
+# --- Секрети -----------------------------------------------------------------
+# 🔴 НАЙВАЖЛИВІШИЙ БЛОК ФАЙЛУ.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Docker secrets (приватні ключі LiqPay, токени R2, ключ шифрування бекапів).
+# Ігноруємо ВЕСЬ каталог, окрім .gitkeep: whitelist безпечніший за blacklist —
+# новий секрет з новим ім'ям не «протече» через те, що його забули дописати.
+infra/secrets/*
+!infra/secrets/.gitkeep
+
+# Сервісний акаунт Google (у private_key — справжній приватний ключ).
+**/google_sa.json
+**/service-account*.json
+
+# OAuth-доступ до таблиць замовника (політика організації забороняє ключі service account,
+# тому ходимо в Sheets від імені користувача). У client_secret є секрет клієнта,
+# у token.json — refresh-токен, який дає доступ до таблиць БЕЗ пароля. Обидва — секрети.
+**/google_oauth.json
+**/client_secret_*.json
+**/google_token.json
+
+# А ОСЬ ЦЕ — НАВПАКИ, МУСИТЬ ЛЕЖАТИ В GIT.
+# infra/images.env — дайджести образів. Це не секрет, це механізм відкату:
+# `git log -p infra/images.env` показує, що саме їхало на прод і коли.
+!infra/images.env
+
+# --- Python ------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+build/
+dist/
+*.egg-info/
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# --- Django ------------------------------------------------------------------
+*.log
+*.sqlite3
+staticfiles/
+media/
+backend/media/
+backend/staticfiles/
+celerybeat-schedule*
+celerybeat.pid
+
+# Компільовані переклади — артефакт збірки (.po в git, .mo — ні).
+*.mo
+
+# --- Node / Next.js ----------------------------------------------------------
+node_modules/
+.next/
+out/
+.turbo/
+next-env.d.ts
+*.tsbuildinfo
+.npm/
+.eslintcache
+
+# --- Інфраструктура ----------------------------------------------------------
+# Дампи БД. Містять ПІБ, телефони, адреси покупців — у git їм не місце ніколи.
+*.dump
+*.sql.gz
+backups/
+
+# --- IDE / ОС ----------------------------------------------------------------
+.idea/
+.vscode/
+!.vscode/extensions.json
+*.swp
+.DS_Store
+Thumbs.db

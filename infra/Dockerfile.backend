@@ -1,0 +1,87 @@
+# =============================================================================
+# Complex backend — Django 5 + Django Ninja + Celery.  Multi-stage, uv, non-root.
+# Контекст збірки — КОРІНЬ РЕПО:
+#   docker build -f infra/Dockerfile.backend -t complex-backend .
+#
+# Про пінінг: базові образи тут стоять по тегу, а не по дайджесту, і це свідомо.
+# Артефакт збірки — НАШ образ, і саме він пінується по sha256 в infra/images.env;
+# саме його викачує прод і саме на нього робиться відкат. Прибивати базу
+# дайджестом означало б, що кожен `apt`-фікс безпеки в python:3.12-slim вимагає
+# ручного перепіну; ми натомість перезбираємо образ і пінуємо результат.
+# =============================================================================
+
+# --- stage 1: залежності --------------------------------------------------
+FROM python:3.12-slim-bookworm AS builder
+
+# uv статичним бінарником з офіційного образу — не тягнемо pip/curl у білд.
+COPY --from=ghcr.io/astral-sh/uv:0.11.28 /uv /usr/local/bin/uv
+
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PYTHON_DOWNLOADS=never \
+    UV_PROJECT_ENVIRONMENT=/opt/venv
+
+WORKDIR /app
+
+# Спершу — тільки маніфести. Шар з залежностями кешується і не перебудовується
+# на кожну зміну коду (а вона в 99% випадків їх не чіпає).
+COPY backend/pyproject.toml backend/uv.lock ./
+
+# --frozen: збірка ПАДАЄ, якщо uv.lock розійшовся з pyproject.
+# Це навмисно: мовчазне доресолвування версій у проді — це «в мене працювало».
+# --no-dev: pytest/mypy/ruff у прод-образі не потрібні (і це -150 МБ).
+RUN uv sync --frozen --no-dev --no-install-project
+
+# --- stage 2: рантайм -----------------------------------------------------
+FROM python:3.12-slim-bookworm AS runtime
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PATH="/opt/venv/bin:$PATH" \
+    DJANGO_SETTINGS_MODULE=config.settings.prod
+
+# psycopg[binary], Pillow і lxml приїжджають wheel'ами з вшитими бібліотеками —
+# libpq/libjpeg/libxml2 в рантаймі не потрібні. Ставимо тільки tini (коректний
+# reaper зомбі-процесів: celery форкає дітей, а PID 1 у python їх не прибирає).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends tini \
+    && rm -rf /var/lib/apt/lists/*
+
+# Non-root. Фіксований UID/GID — щоб права на named volumes (staticfiles, feeds)
+# не «попливли» після перезбірки образу.
+RUN groupadd --gid 1000 complex \
+    && useradd --uid 1000 --gid 1000 --create-home --shell /usr/sbin/nologin complex
+
+COPY --from=builder --chown=root:root /opt/venv /opt/venv
+
+WORKDIR /app
+COPY --chown=complex:complex backend/ /app/
+COPY --chown=root:root infra/scripts/backend-entrypoint.sh /usr/local/bin/backend-entrypoint.sh
+RUN chmod 0755 /usr/local/bin/backend-entrypoint.sh
+
+# Каталоги під named volumes створюємо ЗАЗДАЛЕГІДЬ і з правильним власником:
+# docker створює точку монтування від root, і non-root процес у неї не запише.
+RUN mkdir -p /app/staticfiles /app/media /srv/feeds \
+    && chown -R complex:complex /app/staticfiles /app/media /srv/feeds
+
+# Збираємо статику вже на збірці — щоб зламаний ManifestStaticFilesStorage
+# (немає файлу, до якого є посилання) впав тут, у CI, а не о 3-й ночі на проді.
+# Значення нижче — фіктивні, вони потрібні лише щоб settings.prod імпортувався.
+RUN DJANGO_SECRET_KEY=build-only \
+    DJANGO_ALLOWED_HOSTS=localhost \
+    DATABASE_URL=postgres://u@localhost/db \
+    R2_ACCESS_KEY_ID=x R2_SECRET_ACCESS_KEY=x \
+    python manage.py collectstatic --noinput --clear \
+    && chown -R complex:complex /app/staticfiles
+
+USER complex
+
+EXPOSE 8000
+
+# tini → entrypoint (розгортає *_FILE-секрети) → CMD
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/backend-entrypoint.sh"]
+
+CMD ["gunicorn", "config.asgi:application", \
+     "--worker-class=uvicorn_worker.UvicornWorker", \
+     "--workers=2", "--bind=0.0.0.0:8000", \
+     "--access-logfile=-", "--error-logfile=-"]

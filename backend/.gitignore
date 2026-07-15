@@ -1,0 +1,17 @@
+.env
+# Google OAuth (запасний шлях до Sheets, sync/sheets.py §2б).
+# google_token.json — це ДОСТУП ДО ТАБЛИЦЬ БЕЗ ПАРОЛЯ. Ніколи не комітити.
+google_oauth.json
+google_token.json
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+staticfiles/
+media/
+*.log
+*.sqlite3

@@ -1,0 +1,42 @@
+[
+  {
+    "Description": "Ужгород",
+    "DescriptionRu": "Ужгород",
+    "Ref": "e221d627-391c-11dd-90d9-001a92567626",
+    "Area": "0f325a29-3ac1-11de-b509-001d92f78698",
+    "SettlementType": "563ced10-f65e-11e3-8c4a-0050568002cf",
+    "SettlementTypeDescription": "місто",
+    "IsBranch": "0",
+    "CityID": "6"
+  },
+  {
+    "Description": "Київ",
+    "DescriptionRu": "Киев",
+    "Ref": "8d5a980d-391c-11dd-90d9-001a92567626",
+    "Area": "71508131-9b87-11de-822f-000c2965ae0e",
+    "SettlementType": "563ced10-f65e-11e3-8c4a-0050568002cf",
+    "SettlementTypeDescription": "місто",
+    "IsBranch": "1",
+    "CityID": "4"
+  },
+  {
+    "Description": "Львів",
+    "DescriptionRu": "Львов",
+    "Ref": "db5c88f0-391c-11dd-90d9-001a92567626",
+    "Area": "dcaad6fe-8912-11eb-8513-b88303659df5",
+    "SettlementType": "563ced10-f65e-11e3-8c4a-0050568002cf",
+    "SettlementTypeDescription": "місто",
+    "IsBranch": "0",
+    "CityID": "5"
+  },
+  {
+    "Description": "Мукачево",
+    "DescriptionRu": "Мукачево",
+    "Ref": "e221d642-391c-11dd-90d9-001a92567626",
+    "Area": "0f325a29-3ac1-11de-b509-001d92f78698",
+    "SettlementType": "563ced10-f65e-11e3-8c4a-0050568002cf",
+    "SettlementTypeDescription": "місто",
+    "IsBranch": "0",
+    "CityID": "51"
+  }
+]

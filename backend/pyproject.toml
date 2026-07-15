@@ -1,0 +1,109 @@
+[project]
+name = "complex-backend"
+version = "0.1.0"
+description = "Complex — інтернет-магазин побутової техніки. Backend: Django 5 + Django Ninja."
+requires-python = ">=3.12,<3.13"
+
+dependencies = [
+    # --- ядро ---
+    "django>=5.1,<5.3",
+    "django-ninja>=1.3",
+    "psycopg[binary]>=3.2",
+    "django-environ>=0.11",
+    # --- черги ---
+    "celery[redis]>=5.4",
+    "redis>=5.0",
+    # SYNC.md §8: розклад beat живе в БД (DatabaseScheduler) і редагується в адмінці.
+    "django-celery-beat>=2.7",
+    # --- адмінка / безпека ---
+    "django-unfold>=0.43",
+    "django-otp>=1.5",
+    "qrcode>=8.0",
+    "django-axes>=7.0",
+    # --- i18n (uk + ru) ---
+    "django-modeltranslation>=0.19",
+    # --- медіа / сховище ---
+    "pillow>=11.0",
+    "django-storages[s3]>=1.14",
+    "boto3>=1.35",
+    # --- інтеграції ---
+    "httpx>=0.28",
+    "gspread>=6.1",
+    "google-auth>=2.35",
+    # OAuth від імені користувача — ЗАПАСНИЙ шлях до Sheets (sync/sheets.py §2б):
+    # політика організації (iam.disableServiceAccountKeyCreation) забороняє ключі SA.
+    # Потрібен лише для manage.py google_auth (InstalledAppFlow) — прибрати, коли дадуть ключ SA.
+    "google-auth-oauthlib>=1.2",
+    "anthropic>=0.40",
+    "lxml>=5.3",
+    # --- прод-сервер (infra/docker-compose.yml: сервіс web) ---
+    # gunicorn керує воркерами й перезапусками, uvicorn виконує ASGI.
+    # uvicorn-worker — це ОКРЕМИЙ пакет: клас uvicorn.workers.UvicornWorker
+    # з самого uvicorn застарілий і в найближчих версіях зникне.
+    "gunicorn>=23.0",
+    "uvicorn[standard]>=0.34",
+    "uvicorn-worker>=0.3",
+    # --- інше ---
+    "python-slugify>=8.0",
+    "sentry-sdk[django]>=2.18",
+    "django-cors-headers>=4.9.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-django>=4.9",
+    "pytest-cov>=6.0",
+    "factory-boy>=3.3",
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "django-stubs[compatible-mypy]>=5.1",
+    "django-debug-toolbar>=4.4",
+]
+
+# Проєкт — не бібліотека: нічого не збираємо, просто керуємо оточенням.
+[tool.uv]
+package = false
+
+# ---------------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings.local"
+python_files = ["test_*.py", "tests.py"]
+testpaths = ["tests"]
+addopts = [
+    "--strict-markers",
+    "--reuse-db",
+    "-ra",
+]
+markers = [
+    "slow: повільні тести (мережа, великі фікстури)",
+]
+filterwarnings = [
+    "error::DeprecationWarning:catalog.*",
+    "error::DeprecationWarning:sync.*",
+]
+
+[tool.coverage.run]
+source = ["core", "catalog", "sync", "orders", "delivery", "payments", "cms", "feeds", "translation"]
+omit = ["*/migrations/*", "*/tests/*"]
+
+# ---------------------------------------------------------------------------
+# mypy
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.12"
+plugins = ["mypy_django_plugin.main"]
+strict_optional = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+check_untyped_defs = true
+exclude = ["migrations/"]
+
+[[tool.mypy.overrides]]
+module = ["gspread.*", "unfold.*", "axes.*", "storages.*", "factory.*"]
+ignore_missing_imports = true
+
+[tool.django-stubs]
+django_settings_module = "config.settings.local"

@@ -1,0 +1,308 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@plugin "@tailwindcss/typography";
+
+/* Тема перемикається класом .dark на <html> (next-themes, attribute="class"). */
+@custom-variant dark (&:is(.dark *));
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ТОКЕНИ → УТИЛІТИ TAILWIND
+   Джерело: docs/research/DESIGN_SYSTEM.md §2.1. Значення HSL — 1:1 з документа.
+   ══════════════════════════════════════════════════════════════════════════ */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+
+  /* Акцент. Дозволений РІВНО в 4 місцях (DESIGN_SYSTEM §2.3):
+     кнопка «Купити», ціна зі знижкою, бейдж знижки, активний фасет/фокус-ring. */
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-active: var(--primary-active);
+
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+
+  /* --accent у shadcn = поверхня ховера, НЕ бренд. Не плутати з --primary. */
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+
+  /* Бренд-підкладка: активний фасет, чіп, м'який бейдж. */
+  --color-brand-subtle: var(--brand-subtle);
+  --color-brand-subtle-foreground: var(--brand-subtle-foreground);
+
+  /* Червоне = ПОМИЛКА. Знижка ніколи не червона. */
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+
+  /* Друга дія: «Купити в 1 клік». */
+  --color-contrast: var(--contrast);
+  --color-contrast-foreground: var(--contrast-foreground);
+
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Ціни. */
+  --color-price: var(--price);
+  --color-price-regular: var(--price-regular);
+  --color-price-old: var(--price-old);
+
+  /* Наявність. */
+  --color-stock-in: var(--stock-in);
+  --color-stock-in-bg: var(--stock-in-bg);
+  --color-stock-order: var(--stock-order);
+  --color-stock-order-bg: var(--stock-order-bg);
+  --color-stock-out: var(--stock-out);
+  --color-stock-out-bg: var(--stock-out-bg);
+
+  --font-sans: var(--font-sans);
+  --font-heading: var(--font-sans);
+
+  /* ── Типографічна шкала (DESIGN_SYSTEM §3) ──────────────────────────────
+     display і h1 — clamp: 40/44 на ПК, 32/36 і 30/36→24/30 на мобільному. */
+  --text-display: clamp(2rem, 1.4rem + 2.4vw, 2.5rem);
+  --text-display--line-height: 1.1;
+  --text-display--font-weight: 700;
+  --text-display--letter-spacing: -0.02em;
+
+  --text-h1: clamp(1.5rem, 1.2rem + 1.2vw, 1.875rem);
+  --text-h1--line-height: 1.2;
+  --text-h1--font-weight: 700;
+  --text-h1--letter-spacing: -0.02em;
+
+  --text-h2: 1.5rem;
+  --text-h2--line-height: 2rem;
+  --text-h2--font-weight: 600;
+  --text-h2--letter-spacing: -0.01em;
+
+  --text-h3: 1.25rem;
+  --text-h3--line-height: 1.75rem;
+  --text-h3--font-weight: 600;
+  --text-h3--letter-spacing: -0.01em;
+
+  /* Ціни — окрема шкала, важливіша за заголовки. */
+  --text-price-xl: 2.25rem;
+  --text-price-xl--line-height: 2.5rem;
+  --text-price-xl--font-weight: 700;
+
+  --text-price-lg: 1.25rem;
+  --text-price-lg--line-height: 1.5rem;
+  --text-price-lg--font-weight: 700;
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8); /* 8px — кнопки, інпути */
+  --radius-lg: var(--radius); /* 10px — картки */
+  --radius-xl: calc(var(--radius) * 1.2); /* 12px — модалки */
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/* ── СВІТЛА ТЕМА (дефолт) ─────────────────────────────────────────────────
+   ⚠️ ТОКЕНИ ЗАПИСАНІ HEX-АМИ, А НЕ hsl(), І ЦЕ ПРИНЦИПОВО.
+
+   У DESIGN_SYSTEM §2.1 кожен токен наведений і як HSL-трійка, і як hex. Вони
+   НЕ ЕКВІВАЛЕНТНІ: HSL — лоссі-запис, він не відтворює hex назад. Перевірено:
+     hsl(21 89% 41%)  → #C64D0C, а не #C2410C  (4.70:1 замість 5.18:1)
+     hsl(32 91% 37%)  → #B46408, а не #B45309  (4.41:1 замість 5.02:1) ← НИЖЧЕ AA!
+   Тобто «Під замовлення», записане через HSL, ПРОВАЛЮЄ поріг 4.5:1.
+
+   Таблиця контрастів у §2.2 (46/46 пар) рахована саме для HEX-ів — отже hex-и і є
+   джерелом істини, а HSL у документі — довідкова нотація. Беремо hex.
+   ───────────────────────────────────────────────────────────────────────── */
+:root {
+  --background: #ffffff;
+  --foreground: #18181b;
+  --card: #ffffff;
+  --card-foreground: #18181b;
+  --popover: #ffffff;
+  --popover-foreground: #18181b;
+
+  --primary: #c2410c; /* білий текст на ньому = 5.18:1 */
+  --primary-foreground: #ffffff;
+  --primary-hover: #9e350a;
+  --primary-active: #822c08;
+
+  --secondary: #f4f4f5;
+  --secondary-foreground: #18181b;
+  --muted: #f4f4f5;
+  --muted-foreground: #5c5c66; /* 6.61:1 на білому */
+
+  --accent: #f4f4f5;
+  --accent-foreground: #18181b;
+
+  --brand-subtle: #fff1e6;
+  --brand-subtle-foreground: #b34700; /* 4.97:1 на --brand-subtle */
+
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+
+  --contrast: #111113;
+  --contrast-foreground: #ffffff;
+
+  /* ⚠️ --border (1.27:1) — свідомо декоративний: роздільники, рамка картки.
+     Для обводок КОНТРОЛІВ (input/checkbox/select) — --input (3.42:1),
+     як вимагає WCAG 1.4.11. Не використовувати border-border на формах. */
+  --border: #e4e4e7;
+  --input: #8a8a93;
+  --ring: #c2410c;
+
+  --price: #c2410c; /* ціна ЗІ ЗНИЖКОЮ */
+  --price-regular: #18181b; /* ціна без знижки — чорна */
+  --price-old: #71717a; /* line-through */
+
+  --stock-in: #15803d; /* навмисно приглушений, щоб не сперечався з акцентом */
+  --stock-in-bg: #ecfdf3;
+  --stock-order: #b45309; /* бурштин, НЕ червоний: товар можна купити */
+  --stock-order-bg: #fff7ed;
+  --stock-out: #5c5c66;
+  --stock-out-bg: #f4f4f5;
+
+  --radius: 0.625rem; /* 10px */
+}
+
+/* ── ТЕМНА ТЕМА ───────────────────────────────────────────────────────────
+   Напрям тексту на кнопці інвертується: у світлій — білий на темно-помаранчевому,
+   у темній — майже-чорний на яскраво-помаранчевому. Один хекс не тримає 4.5:1
+   в обох темах (DESIGN_SYSTEM §2.2, п.1). Це не баг, а свідомий трейд-оф. */
+.dark {
+  --background: #0a0a0b;
+  --foreground: #fafafa;
+  --card: #141416;
+  --card-foreground: #fafafa;
+  --popover: #141416;
+  --popover-foreground: #fafafa;
+
+  --primary: #fb7318;
+  --primary-foreground: #180b02; /* 6.96:1 */
+  --primary-hover: #fc8f45;
+  --primary-active: #fda363;
+
+  --secondary: #26262a;
+  --secondary-foreground: #fafafa;
+  --muted: #1c1c1f;
+  --muted-foreground: #a1a1aa;
+
+  --accent: #1c1c1f;
+  --accent-foreground: #fafafa;
+
+  --brand-subtle: #2b1608;
+  --brand-subtle-foreground: #ff9147; /* 7.69:1 */
+
+  --destructive: #f04438;
+  --destructive-foreground: #1a0503;
+
+  --contrast: #fafafa; /* інвертується */
+  --contrast-foreground: #0a0a0b;
+
+  --border: #2a2a2e;
+  --input: #63636b; /* 3.32:1 */
+  --ring: #fb7318;
+
+  --price: #fb7318;
+  --price-regular: #fafafa;
+  --price-old: #8b8b94;
+
+  --stock-in: #4ade80;
+  --stock-in-bg: #0d2318;
+  --stock-order: #fbbf24;
+  --stock-order-bg: #2a1d06;
+  --stock-out: #a1a1aa;
+  --stock-out-bg: #26262a;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+
+  html {
+    @apply font-sans;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Фокус глобально. НІКОЛИ не outline:none без заміни (DESIGN_SYSTEM §6). */
+  :focus-visible {
+    @apply outline-ring outline-2 outline-offset-2;
+  }
+
+  /* Моноширинні цифри: ціни в колонках сітки не повинні «стрибати». */
+  .tnum,
+  .price,
+  table td,
+  .product-code {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1, "cv05" 1;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  /* Сітка контенту (DESIGN_SYSTEM §6). */
+  .container-complex {
+    @apply mx-auto w-full max-w-[1440px] px-4 lg:px-8;
+  }
+
+  /* Градієнт-фейд над згорнутим блоком (SpecsTable §4.4, FacetFilters). */
+  .fade-bottom::after {
+    content: "";
+    @apply pointer-events-none absolute inset-x-0 bottom-0 h-16;
+    background: linear-gradient(to bottom, transparent, var(--card));
+  }
+
+  /* ── Текст ПОВЕРХ ФОТО (банери) ──────────────────────────────────────────
+   *
+   * ⚠️ НЕ використовує --foreground / --muted-foreground, і це принципово.
+   * Ці токени розраховані на --background (світлий/темний фон теми), а текст банера
+   * лежить на ФОТО, якого тема не знає. Раніше тут стояв text-foreground (#18181B —
+   * майже чорний) поверх темних фото замовника → контраст 1.09:1 при нормі 4.5:1,
+   * тобто текст був фізично нечитабельний («колір тексту зливається з фоном»).
+   *
+   * Колір ЗАФІКСОВАНО білим і не залежить від теми, а читабельність гарантує не
+   * вдале фото, а два шари захисту: градієнт-скрім (.banner-scrim) під текстом
+   * і text-shadow на самому тексті — на випадок світлої ділянки знімка.
+   * Разом це дає ≈15:1 на будь-якому фото, а не тільки на трьох поточних.
+   */
+  .banner-scrim {
+    @apply pointer-events-none absolute inset-0;
+    background: linear-gradient(
+      to top,
+      rgb(0 0 0 / 0.8) 0%,
+      rgb(0 0 0 / 0.45) 45%,
+      rgb(0 0 0 / 0.1) 100%
+    );
+  }
+
+  .banner-text {
+    color: #fff;
+    text-shadow: 0 1px 3px rgb(0 0 0 / 0.6);
+  }
+
+  .banner-text-muted {
+    color: rgb(255 255 255 / 0.85);
+    text-shadow: 0 1px 3px rgb(0 0 0 / 0.6);
+  }
+}

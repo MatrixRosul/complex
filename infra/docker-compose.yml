@@ -1,0 +1,592 @@
+# =============================================================================
+# Complex — прод-стек на одному VPS.  Запуск ТІЛЬКИ з кореня репо:
+#
+#   docker compose --env-file .env --env-file infra/images.env -f infra/docker-compose.yml up -d
+#
+# (Makefile робить це за тебе: `make prod-up`.)
+#
+# Три речі, які тут НЕ прикраса, а вимога (ARCHITECTURE §4.4, §5):
+#   1. ЛІМІТИ CPU/RAM на кожен сервіс — один VPS, один OOM-killer. Без лімітів
+#      воркер, що жує 10k рядків прайсу, забирає пам'ять у postgres, і лягає ВСЕ.
+#   2. HEALTHCHECK на кожен сервіс — `depends_on: condition: service_healthy` без
+#      healthcheck'а нічого не гарантує: web стартує раніше за postgres і падає.
+#   3. ПІНІНГ ОБРАЗІВ ПО ДАЙДЖЕСТУ — усі образи приходять з infra/images.env як
+#      `repo:tag@sha256:…`. Тег мутабельний (postgres:16 сьогодні і завтра — різні
+#      образи), дайджест — ні. Відкат = git revert одного рядка в images.env.
+#      Змінні ОБОВ'ЯЗКОВІ (`:?`): якщо дайджест не заданий — compose падає одразу
+#      з внятною помилкою, а не піднімає невідомо що.
+#
+# Ресурси розраховані на VPS 4 vCPU / 8 ГБ.
+#
+# Сума лімітів = 7.0 ГБ, і це БІЛЬШЕ, ніж лишається вільної пам'яті. Так і має
+# бути: ліміт — це СТЕЛЯ окремого сервісу («далі тебе вб'ють»), а не бронь.
+# Одночасно в стелю всі не впираються ніколи. Очікуване споживання в спокої:
+#
+#   postgres ~600М · web 2×250М · worker ~400М · worker-sync ~200М · worker-ai ~150М
+#   frontend ~200М · redis ~150М · beat ~80М · caddy ~40М · backup ~30М   ≈ 2.1 ГБ
+#
+# Сенс лімітів не в тому, щоб поділити пам'ять, а в тому, щоб ОДИН сервіс, який
+# потік (worker з 10k рядків прайсу, Pillow на важкому фото), не з'їв її всю і не
+# підставив під OOM-killer postgres. Без лімітів ядро вбиває не винного, а
+# найтовстішого — тобто базу.
+#
+# Менший VPS → різати `worker`, `web`, `frontend` у такому порядку.
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Спільні шматки
+# ---------------------------------------------------------------------------
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+# Спільне оточення Django-процесів (web, worker*, beat).
+# Секрети сюди НЕ потрапляють — вони приходять файлами (`secrets:`) і читаються
+# entrypoint'ом зі змінних *_FILE.  Причина: env світиться в `docker inspect`
+# і в breadcrumbs Sentry (ROADMAP REL-01).
+x-django-env: &django-env
+  DJANGO_SETTINGS_MODULE: config.settings.prod
+  DJANGO_SECRET_KEY_FILE: /run/secrets/django_secret_key
+  DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:?}
+  DJANGO_LOG_LEVEL: ${DJANGO_LOG_LEVEL:-INFO}
+  CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS:?}
+  SITE_URL: ${SITE_URL:?}
+  ADMIN_URL: ${ADMIN_URL:?}
+
+  DATABASE_URL: postgres://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:?}
+  DB_CONN_MAX_AGE: ${DB_CONN_MAX_AGE:-60}
+
+  REDIS_URL: redis://redis:6379
+  REDIS_CACHE_URL: redis://redis:6379/1
+  CELERY_BROKER_URL: redis://redis:6379/0
+  CELERY_RESULT_BACKEND: redis://redis:6379/2
+
+  # Куди feeds.tasks.generate_hotline_feed пише hotline.xml.  Це named volume,
+  # а НЕ шар контейнера: інакше кожен `compose up -d` знищує файл → бот Hotline
+  # ловить 404 → товари знімаються з майданчика (INTEGRATIONS §2.6).
+  FEEDS_ROOT: /srv/feeds
+
+  USE_R2: "True"
+  R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:?}
+  R2_SECRET_ACCESS_KEY_FILE: /run/secrets/r2_secret_access_key
+  R2_BUCKET: ${R2_BUCKET:?}
+  R2_SNAPSHOTS_BUCKET: ${R2_SNAPSHOTS_BUCKET:?}
+  R2_ENDPOINT_URL: ${R2_ENDPOINT_URL:?}
+  R2_PUBLIC_DOMAIN: ${R2_PUBLIC_DOMAIN:?}
+  R2_REGION: ${R2_REGION:-auto}
+
+  GOOGLE_SA_JSON_PATH: /run/secrets/google_sa.json
+  SHEETS_PRICE_SPREADSHEET_ID: ${SHEETS_PRICE_SPREADSHEET_ID:-}
+  SHEETS_SPEC_SPREADSHEET_ID: ${SHEETS_SPEC_SPREADSHEET_ID:-}
+
+  NP_API_KEY_FILE: /run/secrets/np_api_key
+  LIQPAY_PUBLIC_KEY: ${LIQPAY_PUBLIC_KEY:-}
+  LIQPAY_PRIVATE_KEY_FILE: /run/secrets/liqpay_private_key
+  LIQPAY_SANDBOX: ${LIQPAY_SANDBOX:-False}
+  ANTHROPIC_API_KEY_FILE: /run/secrets/anthropic_api_key
+  AI_MONTHLY_BUDGET_USD: ${AI_MONTHLY_BUDGET_USD:-50}
+
+  HOTLINE_FIRM_ID: ${HOTLINE_FIRM_ID:-}
+  NEXT_REVALIDATE_URL: http://frontend:3000/api/revalidate
+  NEXT_REVALIDATE_SECRET_FILE: /run/secrets/next_revalidate_secret
+
+  TELEGRAM_BOT_TOKEN_FILE: /run/secrets/telegram_bot_token
+  TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+  HEALTHCHECKS_SYNC_URL: ${HEALTHCHECKS_SYNC_URL:-}
+
+  SENTRY_DSN: ${SENTRY_DSN:-}
+  SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
+  SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.05}
+  GIT_SHA: ${GIT_SHA:?}
+
+  EMAIL_HOST: ${EMAIL_HOST:-}
+  EMAIL_PORT: ${EMAIL_PORT:-587}
+  EMAIL_HOST_USER: ${EMAIL_HOST_USER:-}
+  EMAIL_HOST_PASSWORD_FILE: /run/secrets/email_host_password
+  DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL:-noreply@complex.ua}
+
+x-django-secrets: &django-secrets
+  - django_secret_key
+  - r2_secret_access_key
+  - google_sa.json
+  - np_api_key
+  - liqpay_private_key
+  - anthropic_api_key
+  - next_revalidate_secret
+  - telegram_bot_token
+  - email_host_password
+
+x-django-base: &django-base
+  image: ${BACKEND_IMAGE:?BACKEND_IMAGE не заданий — див. infra/images.env (формат repo:tag@sha256:…)}
+  restart: unless-stopped
+  logging: *logging
+  networks: [complex]
+  secrets: *django-secrets
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
+services:
+  # ===========================================================================
+  # PostgreSQL 16 + pgBackRest (образ наш: infra/backup/Dockerfile).
+  # pgbackrest мусить лежати САМЕ тут, бо archive_command виконує postgres.
+  # ===========================================================================
+  postgres:
+    image: ${POSTGRES_IMAGE:?POSTGRES_IMAGE не заданий — див. infra/images.env}
+    restart: unless-stopped
+    logging: *logging
+    networks: [complex]
+    # Порт назовні НЕ публікуємо. Доступ до БД — тільки через `docker compose exec`
+    # або ssh-тунель. Postgres на 0.0.0.0 — це половина інцидентів з витоком даних.
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      POSTGRES_DB: ${POSTGRES_DB:?}
+      # initdb з UTF-8 і C-колацією: uk/ru тексти + стабільний ORDER BY.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C.UTF-8"
+      PGBACKREST_STANZA: ${PGBACKREST_STANZA:-nisa}
+      PGBACKREST_R2_BUCKET: ${PGBACKREST_R2_BUCKET:?}
+      PGBACKREST_R2_ENDPOINT: ${PGBACKREST_R2_ENDPOINT:?}
+      PGBACKREST_R2_KEY: ${PGBACKREST_R2_KEY:?}
+    command:
+      - postgres
+      # --- WAL-архівація в pgBackRest (RPO ≈ 5 хв, ARCHITECTURE ADR-019) ---
+      - -c
+      - wal_level=replica
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_command=pgbackrest --stanza=${PGBACKREST_STANZA:-nisa} archive-push %p
+      - -c
+      - archive_timeout=300s          # форсуємо перемикання WAL що 5 хв навіть без трафіку
+      - -c
+      - max_wal_senders=3
+      - -c
+      - wal_compression=on
+      # --- Пам'ять під ліміт 1.5 ГБ ---
+      - -c
+      - shared_buffers=384MB
+      - -c
+      - effective_cache_size=1GB
+      - -c
+      - work_mem=16MB
+      - -c
+      - maintenance_work_mem=128MB
+      - -c
+      - max_connections=100
+      # --- Спостережуваність ---
+      - -c
+      - log_min_duration_statement=500  # усе, що довше 0.5 с — у лог
+      - -c
+      - log_lock_waits=on
+      - -c
+      - log_checkpoints=on
+      # Захист від «міграція взяла ACCESS EXCLUSIVE і поклала сайт»:
+      # дефолт на рівні кластера; deploy.yml додатково передає PGOPTIONS.
+      - -c
+      - lock_timeout=5s
+      - -c
+      - statement_timeout=60s
+      - -c
+      - idle_in_transaction_session_timeout=60s
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - pgsocket:/var/run/postgresql          # backup-контейнер ходить у БД через цей сокет
+      - pgbackrest_spool:/var/spool/pgbackrest
+      - pgbackrest_log:/var/log/pgbackrest
+      - ./backup/pgbackrest.conf:/etc/pgbackrest/pgbackrest.conf:ro
+    secrets:
+      - pgbackrest_s3_secret
+      - pgbackrest_cipher_pass
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB} -h /var/run/postgresql"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 60s
+    stop_grace_period: 60s   # даємо дописати checkpoint, інакше recovery на старті
+    deploy:
+      resources:
+        limits: {cpus: "2.0", memory: 1536M}
+        reservations: {cpus: "0.5", memory: 512M}
+
+  # ===========================================================================
+  # Redis 7 — broker (db0) + кеш (db1) + result backend (db2).
+  #
+  # ⚠️ maxmemory-policy — НАЛАШТУВАННЯ ІНСТАНСУ, а не бази. Тобто «db0 noeviction,
+  # db1 allkeys-lru» фізично неможливе в одному Redis. Вибір зроблено на користь
+  # noeviction: витіснення ключа з черги = МОВЧКИ З'ЇДЕНА ЗАДАЧА (синк не відбувся,
+  # ціни стоять, ніхто не знає). Витіснення ключа кешу — лише повільніший запит.
+  # Наслідок, який треба знати: всі ключі кешу ЗОБОВ'ЯЗАНІ мати TTL, інакше кеш
+  # дорощує пам'ять до maxmemory і Redis починає віддавати OOM на запис.
+  # Якщо кеш колись перестане вміщатися — піднімай ДРУГИЙ сервіс `redis-cache`
+  # з allkeys-lru і перемикай REDIS_CACHE_URL на нього. Не міняй політику тут.
+  # ===========================================================================
+  redis:
+    image: ${REDIS_IMAGE:?REDIS_IMAGE не заданий — див. infra/images.env}
+    restart: unless-stopped
+    logging: *logging
+    networks: [complex]
+    command:
+      - redis-server
+      - --maxmemory
+      - 320mb
+      - --maxmemory-policy
+      - noeviction            # ← черга важливіша за кеш. Не чіпати.
+      - --appendonly
+      - "yes"                 # переживає рестарт контейнера з чергою на борту
+      - --appendfsync
+      - everysec
+      - --save
+      - ""                    # RDB не потрібен, AOF достатньо
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits: {cpus: "0.5", memory: 448M}   # 320mb data + оверхед AOF-rewrite
+        reservations: {cpus: "0.1", memory: 128M}
+
+  # ===========================================================================
+  # Django API + адмінка.  gunicorn з uvicorn-воркером (ASGI).
+  # 2 репліки: щоб рестарт однієї не вбивав сайт (Caddy тримає обидві в апстрімі).
+  # Порти не публікуємо — назовні дивиться тільки Caddy.
+  # ===========================================================================
+  web:
+    <<: *django-base
+    command:
+      - gunicorn
+      - config.asgi:application
+      - --worker-class=uvicorn_worker.UvicornWorker
+      - --workers=2
+      - --bind=0.0.0.0:8000
+      - --timeout=60          # НП з таймаутом 3с + breaker; 60с — стеля з запасом
+      - --graceful-timeout=30
+      - --max-requests=1000   # страховка від повільних витоків пам'яті
+      - --max-requests-jitter=100
+      - --access-logfile=-
+      - --error-logfile=-
+    environment:
+      <<: *django-env
+      RUN_COLLECTSTATIC: "1"   # entrypoint збирає статику в спільний том для Caddy
+    volumes:
+      - static_data:/app/staticfiles
+      - feeds_data:/srv/feeds       # rw: heal_hotline_feed може викликатись з web
+    healthcheck:
+      # Без curl/wget в образі — б'ємо власним python'ом, він тут точно є.
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=5).status==200 else 1)"]
+      interval: 15s
+      timeout: 8s
+      retries: 4
+      start_period: 45s
+    deploy:
+      replicas: 2
+      resources:
+        limits: {cpus: "1.0", memory: 640M}
+        reservations: {cpus: "0.25", memory: 192M}
+
+  # ===========================================================================
+  # Celery-воркери.  Черг чотири (SYNC.md §8), і в них РІЗНА конкурентність —
+  # одним воркером це не виражається (`-c` глобальний). Тому три сервіси:
+  #
+  #   worker      default + images   -c4   денорм, лічильники, фіди, heal, фото
+  #   worker-sync sync               -c1   прайси/характеристики/recalc/rollback
+  #   worker-ai   ai                 -c1   Claude: переклад + збір характеристик
+  #
+  # Чому sync і ai — окремі, а не «sync,ai -c1»: довгий AI-батч зайняв би єдиний
+  # слот, задача синку відстояла б у черзі свої `expires=600` і ТИХО ЗНИКЛА.
+  # Чотиригодинний прайс — пропущений, і жодної помилки в логах.
+  # ===========================================================================
+  worker:
+    <<: *django-base
+    command:
+      - celery
+      - -A
+      - config
+      - worker
+      - --queues=default,images
+      - --concurrency=4
+      - --hostname=default@%h
+      - --max-tasks-per-child=200   # celery + Pillow течуть; дитина періодично переродиться
+      - --loglevel=INFO
+    environment: *django-env
+    volumes:
+      - feeds_data:/srv/feeds       # rw: generate_hotline_feed пише сюди (atomic rename)
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A config inspect ping --destination default@$$(hostname) --timeout 10 | grep -q pong"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 60s
+    stop_grace_period: 120s   # дати доїхати задачі, що вже почалась (acks_late)
+    deploy:
+      resources:
+        limits: {cpus: "1.5", memory: 768M}
+        reservations: {cpus: "0.25", memory: 256M}
+
+  worker-sync:
+    <<: *django-base
+    command:
+      - celery
+      - -A
+      - config
+      - worker
+      - --queues=sync
+      - --concurrency=1          # серіалізацію все одно тримає advisory-lock (ADR-010)
+      - --hostname=sync@%h
+      - --max-tasks-per-child=50
+      - --loglevel=INFO
+    environment: *django-env
+    volumes:
+      - feeds_data:/srv/feeds
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A config inspect ping --destination sync@$$(hostname) --timeout 10 | grep -q pong"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 60s
+    stop_grace_period: 300s   # прогін синку живе довго; обірвати його на деплої = ABORTED
+    deploy:
+      resources:
+        limits: {cpus: "1.0", memory: 768M}   # 10k рядків прайсу + snapshot у пам'яті
+        reservations: {cpus: "0.25", memory: 256M}
+
+  worker-ai:
+    <<: *django-base
+    command:
+      - celery
+      - -A
+      - config
+      - worker
+      - --queues=ai
+      - --concurrency=1          # бюджет Claude, а не CPU (AI_MONTHLY_BUDGET_USD)
+      - --hostname=ai@%h
+      - --max-tasks-per-child=50
+      - --loglevel=INFO
+    environment: *django-env
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A config inspect ping --destination ai@$$(hostname) --timeout 10 | grep -q pong"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 60s
+    stop_grace_period: 120s
+    deploy:
+      resources:
+        limits: {cpus: "0.5", memory: 512M}
+        reservations: {cpus: "0.1", memory: 128M}
+
+  # ===========================================================================
+  # Celery beat (DatabaseScheduler — розклад у БД, редагується в адмінці).
+  # РІВНО ОДНА репліка: дві — це подвійний синк і подвійні листи.
+  #
+  # Healthcheck перевіряє живість процесу по pid-файлу. Він НЕ доводить, що beat
+  # реально тикає — це принципово недоказово зсередини. Тому справжній сторож —
+  # dead-man's switch у Healthchecks.io (ARCHITECTURE ADR-019): кожен успішний
+  # sync_prices пінгує чек, тиша > 2× інтервалу → алерт у Telegram.
+  # ===========================================================================
+  beat:
+    <<: *django-base
+    command:
+      - celery
+      - -A
+      - config
+      - beat
+      - --scheduler=django_celery_beat.schedulers:DatabaseScheduler
+      - --pidfile=/tmp/celerybeat.pid
+      - --loglevel=INFO
+    environment: *django-env
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,sys; pid=int(open('/tmp/celerybeat.pid').read()); os.kill(pid,0)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    deploy:
+      replicas: 1
+      resources:
+        limits: {cpus: "0.25", memory: 256M}
+        reservations: {cpus: "0.05", memory: 64M}
+
+  # ===========================================================================
+  # Next.js (standalone).  SSR/ISR-сторінки магазину.
+  # ===========================================================================
+  frontend:
+    image: ${FRONTEND_IMAGE:?FRONTEND_IMAGE не заданий — див. infra/images.env}
+    restart: unless-stopped
+    logging: *logging
+    networks: [complex]
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+      # Браузер ходить в API через той самий домен (Caddy) — CORS не потрібен.
+      NEXT_PUBLIC_SITE_URL: ${SITE_URL:?}
+      # SSR ходить в API всередині мережі, повз Caddy і повз TLS.
+      INTERNAL_API_URL: http://web:8000
+    secrets:
+      - next_revalidate_secret
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:3000/',r=>process.exit(0)).on('error',()=>process.exit(1))"]
+      interval: 15s
+      timeout: 8s
+      retries: 4
+      start_period: 30s
+    depends_on:
+      web:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits: {cpus: "1.0", memory: 640M}
+        reservations: {cpus: "0.25", memory: 192M}
+
+  # ===========================================================================
+  # Caddy — TLS, reverse proxy, статика, фід Hotline.
+  # Єдиний сервіс з опублікованими портами.
+  # Образ свій (infra/Dockerfile.caddy): у ваніль-Caddy НЕМАЄ rate-limit,
+  # це стороннній модуль, і його треба вкомпілювати.
+  # ===========================================================================
+  caddy:
+    image: ${CADDY_IMAGE:?CADDY_IMAGE не заданий — див. infra/images.env}
+    restart: unless-stopped
+    logging: *logging
+    networks: [complex]
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN:?}
+      ACME_EMAIL: ${ACME_EMAIL:?}
+      # Шлях адмінки з .env, БЕЗ хвостового слеша: `_adm_7f3a9c21`.
+      # Caddy рейт-лімітить /{$ADMIN_PATH}/login/ — див. Caddyfile.
+      ADMIN_PATH: ${ADMIN_PATH:?}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data          # сертифікати! втратиш — впораєшся в rate-limit Let's Encrypt
+      - caddy_config:/config
+      - static_data:/srv/static:ro
+      - feeds_data:/srv/feeds:ro  # ro: Caddy лише віддає hotline.xml, писати йому нема чого
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:2019/config/"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 15s
+    depends_on:
+      web:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits: {cpus: "1.0", memory: 256M}
+        reservations: {cpus: "0.1", memory: 64M}
+
+  # ===========================================================================
+  # pgBackRest: base backup щоночі, diff щодня, restore-drill щотижня.
+  # Той самий образ, що й postgres (у ньому є і pgbackrest, і postgres-бінарники,
+  # без яких restore-drill не зміг би підняти відновлену БД).
+  # Ділить з postgres два томи: PGDATA (читає файли) і сокет (ходить у БД).
+  # ===========================================================================
+  backup:
+    image: ${POSTGRES_IMAGE:?}
+    restart: unless-stopped
+    logging: *logging
+    networks: [complex]
+    entrypoint: ["/usr/local/bin/backup-entrypoint.sh"]
+    environment:
+      PGBACKREST_STANZA: ${PGBACKREST_STANZA:-nisa}
+      PGBACKREST_R2_BUCKET: ${PGBACKREST_R2_BUCKET:?}
+      PGBACKREST_R2_ENDPOINT: ${PGBACKREST_R2_ENDPOINT:?}
+      PGBACKREST_R2_KEY: ${PGBACKREST_R2_KEY:?}
+      POSTGRES_USER: ${POSTGRES_USER:?}
+      POSTGRES_DB: ${POSTGRES_DB:?}
+      # Dead-man's switch і алерти: якщо бекап не сходився — ми маємо ЗНАТИ.
+      HEALTHCHECKS_BACKUP_URL: ${HEALTHCHECKS_BACKUP_URL:-}
+      HEALTHCHECKS_DRILL_URL: ${HEALTHCHECKS_DRILL_URL:-}
+      TELEGRAM_BOT_TOKEN_FILE: /run/secrets/telegram_bot_token
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+    volumes:
+      - pgdata:/var/lib/postgresql/data:ro   # ro: бекап не має жодної причини писати в бойовий PGDATA
+      - pgsocket:/var/run/postgresql
+      - pgbackrest_log:/var/log/pgbackrest
+      - pgbackrest_state:/var/lib/pgbackrest-state
+      - drill_data:/var/lib/pgbackrest-drill  # сюди розгортається БД під restore-drill
+      - ./backup/pgbackrest.conf:/etc/pgbackrest/pgbackrest.conf:ro
+    secrets:
+      - pgbackrest_s3_secret
+      - pgbackrest_cipher_pass
+      - telegram_bot_token
+    healthcheck:
+      # Свіжість бекапу — це і є здоров'я цього сервісу. Живий cron, що нічого
+      # не забекапив, — не «здоровий».
+      test: ["CMD", "/usr/local/bin/check-backup-fresh.sh"]
+      interval: 300s
+      timeout: 30s
+      retries: 2
+      start_period: 180s
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        # restore-drill піднімає другий postgres усередині цього ж контейнера
+        limits: {cpus: "1.0", memory: 768M}
+        reservations: {cpus: "0.1", memory: 64M}
+
+# ---------------------------------------------------------------------------
+# Секрети — файли на VPS у infra/secrets/ (0600, root:root, у git НЕ лежать).
+# Створити: make secrets-init  → далі вписати реальні значення.
+# ---------------------------------------------------------------------------
+secrets:
+  django_secret_key:
+    file: ./secrets/django_secret_key
+  r2_secret_access_key:
+    file: ./secrets/r2_secret_access_key
+  google_sa.json:
+    file: ./secrets/google_sa.json
+  np_api_key:
+    file: ./secrets/np_api_key
+  liqpay_private_key:
+    file: ./secrets/liqpay_private_key
+  anthropic_api_key:
+    file: ./secrets/anthropic_api_key
+  next_revalidate_secret:
+    file: ./secrets/next_revalidate_secret
+  telegram_bot_token:
+    file: ./secrets/telegram_bot_token
+  email_host_password:
+    file: ./secrets/email_host_password
+  # Токен бакета БЕКАПІВ. Окремий від R2_* застосунку — і це не формальність:
+  # компрометація web/worker не має давати доступ на видалення бекапів (ADR-019).
+  pgbackrest_s3_secret:
+    file: ./secrets/pgbackrest_s3_secret
+  pgbackrest_cipher_pass:
+    file: ./secrets/pgbackrest_cipher_pass
+
+networks:
+  complex:
+    driver: bridge
+
+volumes:
+  pgdata:
+  pgsocket:
+  pgbackrest_spool:
+  pgbackrest_log:
+  pgbackrest_state:
+  drill_data:
+  redisdata:
+  static_data:
+  feeds_data:      # ← hotline.xml живе ТУТ і переживає деплой. Не робити bind на код.
+  caddy_data:
+  caddy_config:

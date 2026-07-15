@@ -1,0 +1,74 @@
+# =============================================================================
+# Complex frontend — Next.js App Router, standalone output.
+# Контекст збірки — КОРІНЬ РЕПО:
+#   docker build -f infra/Dockerfile.frontend -t complex-frontend .
+#
+# ⚠️ ВИМОГА ДО frontend/next.config.ts:
+#       output: "standalone"
+#   Без цього рядка стадія runner не знайде .next/standalone і збірка впаде.
+#   standalone дає образ ~180 МБ замість ~1.2 ГБ (node_modules не їдуть у прод).
+# =============================================================================
+
+# --- stage 1: залежності --------------------------------------------------
+FROM node:22-alpine AS deps
+
+WORKDIR /app
+
+# Тільки маніфести → шар кешується, поки не змінився package-lock.json.
+COPY frontend/package.json frontend/package-lock.json ./
+
+# `npm ci` (а не `install`): ставить РІВНО те, що в lock-файлі, і падає, якщо
+# lock розійшовся з package.json. Мовчазний апгрейд транзитивної залежності
+# посеред прод-збірки — не те, чого ми хочемо.
+RUN npm ci
+
+# --- stage 2: збірка ------------------------------------------------------
+FROM node:22-alpine AS builder
+
+WORKDIR /app
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY frontend/ ./
+
+ENV NEXT_TELEMETRY_DISABLED=1 \
+    NODE_ENV=production
+
+# NEXT_PUBLIC_* вшиваються в бандл НА ЗБІРЦІ (це не рантайм-змінні).
+# Тому публічний URL сайту приходить сюди build-arg'ом з CI.
+ARG NEXT_PUBLIC_SITE_URL=https://complex.ua
+ENV NEXT_PUBLIC_SITE_URL=${NEXT_PUBLIC_SITE_URL}
+
+RUN npm run build
+
+# --- stage 3: рантайм -----------------------------------------------------
+FROM node:22-alpine AS runner
+
+ENV NODE_ENV=production \
+    NEXT_TELEMETRY_DISABLED=1 \
+    PORT=3000 \
+    HOSTNAME=0.0.0.0
+
+# tini: Node у PID 1 не пересилає SIGTERM коректно і не прибирає зомбі.
+RUN apk add --no-cache tini
+
+# Non-root, фіксований UID (як у backend — 1000 зайнятий node'ом, беремо 1001).
+RUN addgroup --system --gid 1001 nodejs \
+    && adduser --system --uid 1001 --ingroup nodejs nextjs
+
+WORKDIR /app
+
+# standalone уже містить мінімальний node_modules і власний server.js.
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+
+# ISR-кеш пише сам Next — каталог має належати непривілейованому користувачу,
+# інакше перша ж ревалідація впаде на EACCES (і сторінка застигне назавжди).
+RUN mkdir -p .next/cache && chown -R nextjs:nodejs .next
+
+USER nextjs
+
+EXPOSE 3000
+
+ENTRYPOINT ["/sbin/tini", "--"]
+CMD ["node", "server.js"]

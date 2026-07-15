@@ -1,0 +1,40 @@
+target-version = "py312"
+line-length = 100
+extend-exclude = ["*/migrations/*", ".venv"]
+
+[lint]
+select = [
+    "E",    # pycodestyle
+    "F",    # pyflakes
+    "I",    # isort
+    "UP",   # pyupgrade
+    "B",    # bugbear
+    "C4",   # comprehensions
+    "DJ",   # flake8-django
+    "S",    # bandit
+    "RUF",  # ruff-specific
+    "SIM",  # simplify
+    "TID",  # tidy-imports
+]
+ignore = [
+    "E501",    # довжину рядка стежить formatter
+    "RUF001",  # кирилиця в рядках — це наш робочий алфавіт, не "ambiguous unicode"
+    "RUF002",
+    "RUF003",
+    "RUF012",  # ClassVar на mutable-атрибутах Django-класів
+    "S101",    # assert у тестах
+]
+
+[lint.per-file-ignores]
+"config/settings/*.py" = ["F403", "F405"]   # from .base import *
+"tests/*" = ["S101", "S105", "S106"]
+
+[lint.isort]
+known-first-party = [
+    "config", "core", "catalog", "sync", "orders",
+    "delivery", "payments", "cms", "feeds", "translation", "assistant",
+]
+
+[format]
+quote-style = "double"
+indent-style = "space"
