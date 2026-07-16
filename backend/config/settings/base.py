@@ -89,6 +89,7 @@ INSTALLED_APPS = [
     "feeds",
     "translation",
     "assistant",
+    "aispecs",
 ]
 
 # ---------------------------------------------------------------------------
@@ -495,6 +496,12 @@ def _admin_navigation() -> list[dict]:
                 _nav("Джерела прайсів", "sync_pricesource", "request_quote"),
                 _nav("Листи прайсу", "sync_pricesheet", "table_chart"),
                 _nav("Таблиці характеристик", "sync_specsheet", "table_rows"),
+            ],
+        },
+        {
+            "title": "ШІ-характеристики",
+            "items": [
+                _nav("Черга на перегляд", "aispecs_specharvestjob", "auto_awesome"),
             ],
         },
         {

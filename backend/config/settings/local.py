@@ -8,6 +8,16 @@ from .base import INSTALLED_APPS, MIDDLEWARE, env, init_sentry
 DEBUG = env.bool("DJANGO_DEBUG", default=True)
 ALLOWED_HOSTS = ["*"]
 
+# Адмінка локально відкривається і напряму (:8001), і через проксі фронта (:3001).
+# Django 4+ звіряє заголовок Origin на POST зі списком довірених — без цього вхід і
+# кнопки адмінки («Застосувати») падають з CSRF 403 «Origin checking failed».
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+    "http://localhost:8001",
+    "http://127.0.0.1:8001",
+]
+
 # Локально ліміт спроб входу тільки заважає.
 AXES_ENABLED = env.bool("AXES_ENABLED", default=False)
 
