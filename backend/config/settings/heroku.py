@@ -120,5 +120,23 @@ CACHES = {
         "BACKEND": "django.core.cache.backends.redis.RedisCache",
         "LOCATION": f"{REDIS_URL}/1{_REDIS_SSL}",
         "KEY_PREFIX": "complex",
+        # ↓ див. «БЮДЖЕТ З'ЄДНАНЬ» нижче. OPTIONS Django віддає в ConnectionPool.from_url.
+        "OPTIONS": {"max_connections": 3},
     },
 }
+
+# --- (в) БЮДЖЕТ З'ЄДНАНЬ -----------------------------------------------------
+# ⚠️ План Mini має ЖОРСТКИЙ ліміт ~20 одночасних з'єднань, і ми в нього ВПЕРЛИСЯ:
+#     rejected_connections: 36
+# Проявляється це підступно — не помилкою «ліміт», а обривом на TLS-handshake:
+#     redis.exceptions.ConnectionError: [SSL: UNEXPECTED_EOF_WHILE_READING]
+# що читається як проблема з сертифікатом і відправляє шукати не туди. Redis просто
+# закриває сокет, не встигнувши договорити TLS.
+#
+# Споживачі: web (2 воркери gunicorn × пул кешу) + celery (пул брокера × concurrency
+# + result backend + кеш) + КОЖНЕ разове `heroku run`. Без стелі пули розростаються
+# самі й з'їдають ліміт.
+#
+# У проді (prod.py) цього немає: там свій Redis без такої стелі.
+CELERY_BROKER_POOL_LIMIT = 3
+CELERY_REDIS_MAX_CONNECTIONS = 4
