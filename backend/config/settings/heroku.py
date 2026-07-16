@@ -113,7 +113,12 @@ REDIS_URL = env("REDIS_URL")
 _REDIS_SSL = "?ssl_cert_reqs=none" if REDIS_URL.startswith("rediss://") else ""
 
 CELERY_BROKER_URL = f"{REDIS_URL}/0{_REDIS_SSL}"
-CELERY_RESULT_BACKEND = f"{REDIS_URL}/0{_REDIS_SSL}"
+
+# Результати ВИМКНЕНО. base.py клав їх на /1, якої в цьому аддоні немає (див. (а)), але
+# головне не це: result backend тримає ВЛАСНИЙ пул з'єднань, а ліміт тут — стіна (див. (в)).
+# У проєкті результати не читає ніхто — жодного AsyncResult/.get(), тому втрачати нічого.
+CELERY_RESULT_BACKEND = None
+CELERY_TASK_IGNORE_RESULT = True
 
 CACHES = {
     "default": {
@@ -137,6 +142,11 @@ CACHES = {
 # + result backend + кеш) + КОЖНЕ разове `heroku run`. Без стелі пули розростаються
 # самі й з'їдають ліміт.
 #
-# У проді (prod.py) цього немає: там свій Redis без такої стелі.
-CELERY_BROKER_POOL_LIMIT = 3
-CELERY_REDIS_MAX_CONNECTIONS = 4
+# ЗМІРЯНО, а не вгадано: воркер (concurrency=2, 4 черги, gossip/mingle, result backend)
+# тримав 16 з ~20; після його зупинки лишалось 3. Тому стеля саме на ньому, а в Procfile —
+# concurrency=1 і --without-gossip/--without-mingle/--without-heartbeat.
+#
+# У проді (prod.py) цього немає: там свій Redis без такої стелі, і черги розібрані
+# на три окремі воркери.
+CELERY_BROKER_POOL_LIMIT = 2
+CELERY_REDIS_MAX_CONNECTIONS = 3
