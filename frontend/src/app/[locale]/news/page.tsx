@@ -59,7 +59,7 @@ export default async function NewsListPage({
                   {formatDate(post.published_at, locale)}
                 </time>
 
-                <h2 className="text-h3 text-foreground group-hover:text-primary">
+                <h2 className="text-h3 text-foreground group-hover:underline">
                   {post.title}
                 </h2>
 

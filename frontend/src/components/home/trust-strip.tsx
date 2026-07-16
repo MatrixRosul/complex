@@ -30,7 +30,7 @@ export function TrustStrip({ locale }: { locale: Locale }) {
     <section className="grid grid-cols-1 gap-3 rounded-lg border border-border bg-muted/30 p-4 sm:grid-cols-2 lg:grid-cols-4">
       {items.map(({ icon: Icon, title, text }) => (
         <div key={title} className="flex items-start gap-3">
-          <Icon aria-hidden className="mt-0.5 size-5 shrink-0 text-primary" />
+          <Icon aria-hidden className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
           <div className="flex flex-col">
             <span className="text-sm font-semibold text-foreground">{title}</span>
             <span className="text-xs text-muted-foreground">{text}</span>

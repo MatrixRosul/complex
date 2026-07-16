@@ -124,7 +124,7 @@ export default async function HomePage({
           action={
             <Link
               href={localePath(locale, `/catalog/${section.slug}`)}
-              className="text-sm text-primary hover:underline"
+              className="text-sm text-foreground hover:underline"
             >
               {t("home.toCategory")}
             </Link>
@@ -147,7 +147,7 @@ export default async function HomePage({
             action={
               <Link
                 href={localePath(locale, href)}
-                className="text-sm text-primary hover:underline"
+                className="text-sm text-foreground hover:underline"
               >
                 {t("home.showAll")}
               </Link>

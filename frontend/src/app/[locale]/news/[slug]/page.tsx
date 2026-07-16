@@ -41,7 +41,7 @@ export default async function NewsPostPage({ params }: { params: Params }) {
     <article className="container-complex flex max-w-3xl flex-col gap-5 py-8">
       <Link
         href={localePath(locale, "/news")}
-        className="flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-primary"
+        className="flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
         <ChevronLeft aria-hidden className="size-4" />
         {t("news.backToList")}

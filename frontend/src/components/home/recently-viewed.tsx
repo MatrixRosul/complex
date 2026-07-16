@@ -57,7 +57,7 @@ export function RecentlyViewed() {
       action={
         <Link
           href={localePath(locale, "/catalog")}
-          className="text-sm text-primary hover:underline"
+          className="text-sm text-foreground hover:underline"
         >
           {t("home.showAll")}
         </Link>

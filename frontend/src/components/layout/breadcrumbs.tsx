@@ -18,7 +18,7 @@ export function Breadcrumbs({
     <nav aria-label="breadcrumb">
       <ol className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
         <li className="flex items-center gap-1">
-          <Link href={localePath(locale)} className="hover:text-primary">
+          <Link href={localePath(locale)} className="hover:text-foreground">
             {t("nav.home")}
           </Link>
           <ChevronRight aria-hidden className="size-3" />
@@ -35,7 +35,7 @@ export function Breadcrumbs({
                 </span>
               ) : (
                 <>
-                  <Link href={item.href} className="hover:text-primary">
+                  <Link href={item.href} className="hover:text-foreground">
                     {item.label}
                   </Link>
                   <ChevronRight aria-hidden className="size-3" />

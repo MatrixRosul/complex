@@ -176,7 +176,7 @@ export function CategoryMegaMenu({
                 <>
                   <Link
                     href={localePath(locale, `/catalog/${active.slug}`)}
-                    className="text-sm font-semibold text-foreground hover:text-primary"
+                    className="text-sm font-semibold text-foreground hover:underline"
                   >
                     {active.name}
                   </Link>
@@ -187,7 +187,7 @@ export function CategoryMegaMenu({
                         key={sub.id}
                         data-sub-link
                         href={localePath(locale, `/catalog/${active.slug}/${sub.slug}`)}
-                        className="flex items-center justify-between rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:text-primary"
+                        className="flex items-center justify-between rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
                       >
                         <span>{sub.name}</span>
                         <span className="text-xs text-muted-foreground tnum">

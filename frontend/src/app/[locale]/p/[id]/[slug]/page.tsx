@@ -95,7 +95,7 @@ export default async function ProductPage({ params }: { params: Params }) {
       <div className="flex flex-col gap-3">
         <Link
           href={backHref}
-          className="flex w-fit items-center gap-1 text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
+          className="flex w-fit items-center gap-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
         >
           <ChevronLeft aria-hidden className="size-4" />
           {parent ? t("nav.backTo", { category: parent.name }) : t("nav.back")}

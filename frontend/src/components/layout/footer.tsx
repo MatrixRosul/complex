@@ -33,7 +33,7 @@ export async function Footer({ locale }: { locale: Locale }) {
               <li key={cat.id}>
                 <Link
                   href={localePath(locale, `/catalog/${cat.slug}`)}
-                  className="text-sm text-muted-foreground hover:text-primary"
+                  className="text-sm text-muted-foreground hover:text-foreground"
                 >
                   {cat.name}
                 </Link>
@@ -50,7 +50,7 @@ export async function Footer({ locale }: { locale: Locale }) {
               <li key={item.id}>
                 <Link
                   href={localePath(locale, item.url)}
-                  className="text-sm text-muted-foreground hover:text-primary"
+                  className="text-sm text-muted-foreground hover:text-foreground"
                 >
                   {item.title}
                 </Link>
@@ -59,7 +59,7 @@ export async function Footer({ locale }: { locale: Locale }) {
             <li>
               <Link
                 href={localePath(locale, "/news")}
-                className="text-sm text-muted-foreground hover:text-primary"
+                className="text-sm text-muted-foreground hover:text-foreground"
               >
                 {t("news.title")}
               </Link>
@@ -75,7 +75,7 @@ export async function Footer({ locale }: { locale: Locale }) {
               <li key={item.id}>
                 <Link
                   href={localePath(locale, item.url)}
-                  className="text-sm text-muted-foreground hover:text-primary"
+                  className="text-sm text-muted-foreground hover:text-foreground"
                 >
                   {item.title}
                 </Link>
@@ -93,7 +93,7 @@ export async function Footer({ locale }: { locale: Locale }) {
               <li key={phone}>
                 <a
                   href={`tel:${phone}`}
-                  className="flex items-center gap-2 text-sm text-muted-foreground tnum hover:text-primary"
+                  className="flex items-center gap-2 text-sm text-muted-foreground tnum hover:text-foreground"
                 >
                   <Phone aria-hidden className="size-4 shrink-0" />
                   {formatPhone(phone)}
@@ -109,7 +109,7 @@ export async function Footer({ locale }: { locale: Locale }) {
             <li className="min-w-0">
               <a
                 href={`mailto:${contacts.email}`}
-                className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary"
+                className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
               >
                 <Mail aria-hidden className="size-4 shrink-0" />
                 <span className="min-w-0 break-all">{contacts.email}</span>
