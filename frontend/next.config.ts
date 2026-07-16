@@ -62,6 +62,32 @@ const nextConfig: NextConfig = {
         source: "/media/:path*",
         destination: `${backendOrigin()}/media/:path*`,
       },
+      /**
+       * Django Admin з origin'а фронта — ТІЛЬКИ для тимчасового хостингу (Vercel + Heroku),
+       * де бекенд живе на окремому домені. У проді цього не потрібно: там Caddy віддає
+       * і фронт, і Django з ОДНОГО домену, тому адмінка й так своя.
+       *
+       * ⚠️ Вимагає ADMIN_URL=admin/ на бекенді (за замовчуванням там непередбачуваний
+       *    префікс — ARCHITECTURE §5). Тобто цей rewrite СВІДОМО повертає адмінку на
+       *    вгадуваний шлях; прийнятно на кілька днів показу, не прийнятно в проді.
+       *
+       * ⚠️ /static/** — це НЕ статика Next (вона живе в /_next/static), а статика
+       *    Django Admin, яку віддає whitenoise. Без цього рядка адмінка відкриється
+       *    голим HTML без жодного стилю.
+       */
+      {
+        source: "/admin/:path*",
+        destination: `${backendOrigin()}/admin/:path*`,
+      },
+      {
+        source: "/static/:path*",
+        destination: `${backendOrigin()}/static/:path*`,
+      },
+      // Перемикач мови в адмінці (Unfold) постить саме сюди — див. config/urls.py.
+      {
+        source: "/i18n/:path*",
+        destination: `${backendOrigin()}/i18n/:path*`,
+      },
     ];
   },
 
