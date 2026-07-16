@@ -88,7 +88,7 @@ function IconLink({
           <span className="relative">
             {icon}
             {count > 0 && (
-              <span className="absolute -right-1.5 -top-1.5 flex min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-4 text-primary-foreground tnum">
+              <span className="absolute -right-1.5 -top-1.5 flex min-w-4 items-center justify-center rounded-full bg-contrast px-1 text-[10px] font-semibold leading-4 text-contrast-foreground tnum">
                 {count}
               </span>
             )}

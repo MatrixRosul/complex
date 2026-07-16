@@ -54,7 +54,7 @@ export async function Header({ locale }: { locale: Locale }) {
               <a
                 key={phone}
                 href={`tel:${phone}`}
-                className="font-medium text-foreground tnum hover:text-primary"
+                className="font-medium text-foreground tnum hover:underline"
               >
                 {formatPhone(phone)}
               </a>

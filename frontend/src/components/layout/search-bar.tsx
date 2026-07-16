@@ -238,7 +238,7 @@ export function SearchBar({
                     e.preventDefault();
                     goToSearch(query);
                   }}
-                  className="flex items-center gap-2 px-3 py-2.5 text-sm font-medium text-primary hover:bg-accent/60"
+                  className="flex items-center gap-2 px-3 py-2.5 text-sm font-medium text-foreground hover:bg-accent/60"
                 >
                   <Search aria-hidden className="size-4" />
                   {t("search.viewAll")}

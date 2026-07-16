@@ -78,8 +78,14 @@ export const config = {
      *   /api/*    — проксі-роути (якщо з'являться)
      *   /_next/*  — бандли й оптимізовані зображення
      *   /images/* — статика
+     *   /admin/*  — Django Admin, який next.config.ts проксує на бекенд
+     *   /static/* — статика адмінки звідти ж (whitenoise)
      *   файли з розширенням (favicon.ico, robots.txt, sitemap.xml, *.svg)
+     *
+     * ⚠️ admin і static тут ОБОВ'ЯЗКОВІ: без них цей proxy припише локаль
+     *    (/admin → /uk/admin, 307) ЩЕ ДО rewrite'у, і адмінка стане недосяжною —
+     *    Next віддасть 404 своєї сторінки замість того, щоб сходити на Django.
      */
-    "/((?!api|_next|images|.*\\..*).*)",
+    "/((?!api|_next|images|admin|static|.*\\..*).*)",
   ],
 };

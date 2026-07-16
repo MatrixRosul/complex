@@ -146,7 +146,7 @@ export function CartView() {
                 <div className="flex min-w-0 flex-1 flex-col gap-1">
                   <Link
                     href={localePath(locale, `/p/${item.id}/${item.slug}`)}
-                    className="line-clamp-2 text-sm font-medium text-foreground hover:text-primary"
+                    className="line-clamp-2 text-sm font-medium text-foreground hover:underline"
                   >
                     {item.name}
                   </Link>

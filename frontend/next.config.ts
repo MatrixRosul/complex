@@ -41,6 +41,9 @@ const nextConfig: NextConfig = {
       // Фото товарів у проді — Cloudflare R2 (S3-сумісний), django-storages.
       { protocol: "https", hostname: "**.r2.dev" },
       { protocol: "https", hostname: "**.cloudflarestorage.com" },
+      // Тимчасовий хостинг (Heroku + Vercel) віддає медіа з Cloudinary, а не з R2:
+      // R2 не активується без картки. Див. backend/config/settings/heroku.py.
+      { protocol: "https", hostname: "res.cloudinary.com" },
       // Демо-фото товарів із seed_demo.
       { protocol: "https", hostname: "picsum.photos" },
     ],
@@ -58,6 +61,43 @@ const nextConfig: NextConfig = {
       {
         source: "/media/:path*",
         destination: `${backendOrigin()}/media/:path*`,
+      },
+      /**
+       * Django Admin з origin'а фронта — ТІЛЬКИ для тимчасового хостингу (Vercel + Heroku),
+       * де бекенд живе на окремому домені. У проді цього не потрібно: там Caddy віддає
+       * і фронт, і Django з ОДНОГО домену, тому адмінка й так своя.
+       *
+       * ⚠️ Вимагає ADMIN_URL=admin/ на бекенді (за замовчуванням там непередбачуваний
+       *    префікс — ARCHITECTURE §5). Тобто цей rewrite СВІДОМО повертає адмінку на
+       *    вгадуваний шлях; прийнятно на кілька днів показу, не прийнятно в проді.
+       *
+       * ⚠️ /static/** — це НЕ статика Next (вона живе в /_next/static), а статика
+       *    Django Admin, яку віддає whitenoise. Без цього рядка адмінка відкриється
+       *    голим HTML без жодного стилю.
+       */
+      /**
+       * ⚠️ СЛЕШ У DESTINATION — НЕ ОЗДОБА. Rewrite нормалізує шлях і зрізає хвостовий
+       *    слеш, тому Django отримував `/admin/login` замість `/admin/login/`. Для нього
+       *    це не адмінський URL — він редіректив на логін, слеш зникав знову, і виходив
+       *    нескінченний цикл `?next=/admin/login?next=/admin/login…`.
+       *    Тому: `:path+` (мінімум один сегмент) і слеш дописаний руками.
+       */
+      {
+        source: "/admin",
+        destination: `${backendOrigin()}/admin/`,
+      },
+      {
+        source: "/admin/:path+",
+        destination: `${backendOrigin()}/admin/:path+/`,
+      },
+      {
+        source: "/static/:path*",
+        destination: `${backendOrigin()}/static/:path*`,
+      },
+      // Перемикач мови в адмінці (Unfold) постить саме сюди — див. config/urls.py.
+      {
+        source: "/i18n/:path*",
+        destination: `${backendOrigin()}/i18n/:path*`,
       },
     ];
   },

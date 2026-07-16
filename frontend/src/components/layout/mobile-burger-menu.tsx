@@ -229,7 +229,7 @@ function MenuRow({
       <span className="text-muted-foreground">{icon}</span>
       <span className="flex-1 text-base text-foreground">{label}</span>
       {badge !== undefined && (
-        <span className="rounded-full bg-primary px-2 py-0.5 text-xs font-semibold text-primary-foreground tnum">
+        <span className="rounded-full bg-contrast px-2 py-0.5 text-xs font-semibold text-contrast-foreground tnum">
           {badge}
         </span>
       )}

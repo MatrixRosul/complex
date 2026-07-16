@@ -1,0 +1,4 @@
+release: python manage.py migrate --noinput
+web: gunicorn config.asgi:application --worker-class=uvicorn_worker.UvicornWorker --workers=1 --bind=0.0.0.0:$PORT --access-logfile=- --error-logfile=-
+worker: celery -A config worker -l INFO --concurrency=1 -Q default,images,sync,ai --without-gossip --without-mingle --without-heartbeat
+beat: celery -A config beat -l INFO --scheduler django_celery_beat.schedulers:DatabaseScheduler
