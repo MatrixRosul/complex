@@ -36,6 +36,19 @@ function backendOrigin(): string {
 }
 
 const nextConfig: NextConfig = {
+  /**
+   * ⚠️ ЛИШЕ ЗАРАДИ ПРОКСІ АДМІНКИ (тимчасовий хостинг). Next за замовчуванням 308-им
+   * зрізає хвостовий слеш, а Django на ньому НАПОЛЯГАЄ (APPEND_SLASH). Разом це
+   * нескінченний цикл, у якому адмінка недосяжна:
+   *     /admin/       → 308 (Next зрізав слеш)  → /admin
+   *     /admin        → 302 (Django)            → /admin/login/
+   *     /admin/login/ → 308 (Next зрізав слеш)  → /admin/login → 302 → …
+   * Прапорець віддає рішення про слеш бекенду. Ціна: сторінки Next більше не
+   * нормалізують слеш самі (/uk/catalog і /uk/catalog/ обидва віддають 200) — для
+   * кількох днів показу прийнятно, у прод тягнути НЕ можна: це дублі для пошуковика.
+   */
+  skipTrailingSlashRedirect: true,
+
   images: {
     remotePatterns: [
       // Фото товарів у проді — Cloudflare R2 (S3-сумісний), django-storages.
