@@ -43,6 +43,15 @@ dependencies = [
     "gunicorn>=23.0",
     "uvicorn[standard]>=0.34",
     "uvicorn-worker>=0.3",
+    # Роздача статики САМИМ Django. У проді не використовується (там її віддає Caddy) —
+    # потрібен лише тимчасовому хостингу на Heroku, де перед дино немає нічого, крім роутера.
+    # settings/heroku.py, і тільки він, вмикає middleware та storage.
+    "whitenoise[brotli]>=6.8",
+    # Сховище медіа для ТИМЧАСОВОГО хостингу на Heroku. Прод лишається на R2
+    # (django-storages[s3] вище) — Cloudinary вмикає лише settings/heroku.py.
+    # Причина не технічна: R2 не активується без прив'язаної картки, а акаунт
+    # Cloudinary у замовника вже є. Cloudinary НЕ S3-сумісний, тому окремий пакет.
+    "django-cloudinary-storage>=0.3",
     # --- інше ---
     "python-slugify>=8.0",
     "sentry-sdk[django]>=2.18",

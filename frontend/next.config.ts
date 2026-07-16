@@ -41,6 +41,9 @@ const nextConfig: NextConfig = {
       // Фото товарів у проді — Cloudflare R2 (S3-сумісний), django-storages.
       { protocol: "https", hostname: "**.r2.dev" },
       { protocol: "https", hostname: "**.cloudflarestorage.com" },
+      // Тимчасовий хостинг (Heroku + Vercel) віддає медіа з Cloudinary, а не з R2:
+      // R2 не активується без картки. Див. backend/config/settings/heroku.py.
+      { protocol: "https", hostname: "res.cloudinary.com" },
       // Демо-фото товарів із seed_demo.
       { protocol: "https", hostname: "picsum.photos" },
     ],
