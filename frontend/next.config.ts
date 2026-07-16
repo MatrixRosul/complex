@@ -88,9 +88,20 @@ const nextConfig: NextConfig = {
        *    Django Admin, яку віддає whitenoise. Без цього рядка адмінка відкриється
        *    голим HTML без жодного стилю.
        */
+      /**
+       * ⚠️ СЛЕШ У DESTINATION — НЕ ОЗДОБА. Rewrite нормалізує шлях і зрізає хвостовий
+       *    слеш, тому Django отримував `/admin/login` замість `/admin/login/`. Для нього
+       *    це не адмінський URL — він редіректив на логін, слеш зникав знову, і виходив
+       *    нескінченний цикл `?next=/admin/login?next=/admin/login…`.
+       *    Тому: `:path+` (мінімум один сегмент) і слеш дописаний руками.
+       */
       {
-        source: "/admin/:path*",
-        destination: `${backendOrigin()}/admin/:path*`,
+        source: "/admin",
+        destination: `${backendOrigin()}/admin/`,
+      },
+      {
+        source: "/admin/:path+",
+        destination: `${backendOrigin()}/admin/:path+/`,
       },
       {
         source: "/static/:path*",
