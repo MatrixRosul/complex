@@ -34,8 +34,13 @@ export function BrandStrip({
       <h2 className="text-h2 text-foreground">{title}</h2>
 
       {/* Мобільний — свайп зі snap; ПК — рівна сітка. Стиснути 12 брендів у 2 колонки
-          означало б зробити їх нечитабельними. */}
-      <div className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-1 md:mx-0 md:grid md:grid-cols-6 md:overflow-visible md:px-0">
+          означало б зробити їх нечитабельними.
+          ⚠️ `scroll-px-4` ОБОВ'ЯЗКОВИЙ у парі з `-mx-4 px-4`, і це не косметика.
+          Точки snap рахуються від краю scrollport, а не від padding-box: без scroll-padding
+          браузер вважає валідною позицією лише scrollLeft=16 (де плитка впирається в край
+          екрана), тому `snap-mandatory` СРАЗУ ж зʼїдає лівий відступ — на завантаженні перша
+          плитка обрізана краєм екрана, хоча заголовок над нею стоїть по сітці. */}
+      <div className="no-scrollbar -mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto overscroll-x-contain scroll-px-4 px-4 pb-1 md:mx-0 md:grid md:grid-cols-6 md:overflow-visible md:px-0">
         {brands.map((brand) => (
           <Link
             key={brand.id}
