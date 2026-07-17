@@ -57,6 +57,7 @@ from django.utils import timezone
 
 from delivery.client import (
     KYIV_CITY_REF,
+    NP_SETTLEMENTS_PAGE_LIMIT,
     UZHHOROD_CITY_REF,
     NovaPoshtaClient,
     NovaPoshtaError,
@@ -164,7 +165,9 @@ def sync_np_refs(
         try:
             areas = np.fetch_all("Address", "getAreas")
             cities = np.fetch_all("Address", "getCities")
-            settlements = np.fetch_all("Address", "getSettlements")
+            settlements = np.fetch_all(
+                "Address", "getSettlements", limit=NP_SETTLEMENTS_PAGE_LIMIT
+            )
             warehouses = np.fetch_all("Address", "getWarehouses")
         except (NovaPoshtaUnavailable, NovaPoshtaError) as exc:
             run.status = SyncRun.Status.FAILED
@@ -387,6 +390,15 @@ def _upsert_settlements(
     rows: list[dict[str, Any]], *, run_id: Any, settlement_to_city: dict[str, str]
 ) -> dict[str, int]:
     known_areas = set(NPArea.objects.values_list("ref", flat=True))
+    # 🔴 getSettlements.Area — ІНШИЙ простір UUID, ніж getAreas.Ref (перевірено 17.07.2026):
+    #    settlements віддають "AddressGeneral" area-ref (…-4b33-11e4…), а FK у нас — на
+    #    getAreas.Ref (…-9b87-11de…). getCities.Area збігається з getAreas, getSettlements — ні.
+    #    Тому область резолвимо за назвою (AreaDescription → NPArea.name); ref лишаємо як
+    #    швидкий шлях на випадок, якщо колись співпаде. Без цього ВСІ ~27k населених
+    #    відсікались і автокомпліт міст був порожній.
+    area_ref_by_name = {
+        name.casefold(): ref for ref, name in NPArea.objects.values_list("ref", "name")
+    }
     # Фолбек (в): НП без жодного відділення — беремо CityRef за (Area, назва).
     city_by_area_name = {
         (area, name.casefold()): ref
@@ -397,8 +409,13 @@ def _upsert_settlements(
     without_city = 0
     for r in rows:
         ref = r.get("Ref")
-        area = r.get("Area")
-        if not ref or area not in known_areas:
+        raw_area = r.get("Area")
+        area = (
+            raw_area
+            if raw_area in known_areas
+            else area_ref_by_name.get((r.get("AreaDescription") or "").casefold())
+        )
+        if not ref or not area:
             continue
         name = r.get("Description") or ""
         type_code = r.get("SettlementTypeDescription") or ""

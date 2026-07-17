@@ -99,8 +99,12 @@ UZHHOROD_CITY_REF = "e221d627-391c-11dd-90d9-001a92567626"
 #: Київ — потрібен для smoke-тесту синку довідників (§1.5).
 KYIV_CITY_REF = "8d5a980d-391c-11dd-90d9-001a92567626"
 
-#: Limit=5000 реально працює (INTEGRATIONS §1.4). ~21 запит на весь довідник.
+#: Limit=5000 працює для getCities/getWarehouses (INTEGRATIONS §1.4). ~21 запит на весь довідник.
 NP_PAGE_LIMIT = 5000
+#: 🔴 getSettlements при Limit=5000 віддає HTTP 500 (empty body) — перевірено 17.07.2026:
+#:    Limit=1000 → 200 OK, Limit=5000 → 500. НП тримає для цього методу нижчу стелю сторінки,
+#:    ніж обіцяє дока. 27k населених / 1000 = ~27 сторінок, усе одно хвилина роботи.
+NP_SETTLEMENTS_PAGE_LIMIT = 1000
 #: Стеля пагінації — щоб бита відповідь НП не крутила нас вічно.
 MAX_PAGES = 100
 
@@ -358,13 +362,16 @@ class NovaPoshtaClient:
 
     # --- пагінація ---------------------------------------------------------
 
-    def fetch_all(self, model: str, method: str, **props: Any) -> list[dict[str, Any]]:
-        """Тягне ВСІ сторінки. `Page` — 1-based (не 0!), `Limit=5000`."""
+    def fetch_all(
+        self, model: str, method: str, *, limit: int = NP_PAGE_LIMIT, **props: Any
+    ) -> list[dict[str, Any]]:
+        """Тягне ВСІ сторінки. `Page` — 1-based (не 0!). `limit` — розмір сторінки
+        (getSettlements вимагає меншого, див. NP_SETTLEMENTS_PAGE_LIMIT)."""
         out: list[dict[str, Any]] = []
         for page in range(1, MAX_PAGES + 1):
-            chunk = self.call(model, method, Limit=str(NP_PAGE_LIMIT), Page=str(page), **props)
+            chunk = self.call(model, method, Limit=str(limit), Page=str(page), **props)
             out.extend(chunk)
-            if len(chunk) < NP_PAGE_LIMIT:
+            if len(chunk) < limit:
                 return out
         log.error("НП %s/%s: досягнуто стелі в %s сторінок — обриваємо", model, method, MAX_PAGES)
         return out

@@ -266,6 +266,10 @@ class NPWarehouse(models.Model):
         BRANCH = "Branch", "Відділення"
         POSTOMAT = "Postomat", "Поштомат"
         DROPOFF = "DropOff", "Пункт видачі"
+        FULFILLMENT = "Fulfillment", "Фулфілмент"
+        # НП додала "Fulfillment" (11 символів) у CategoryOfWarehouse — з'явилось 07.2026.
+        # Не клієнтський пункт видачі, але зберігаємо чесно; фільтр видачі бере лише
+        # Branch/Postomat/DropOff.
 
     ref = models.CharField("Ref НП", max_length=36, primary_key=True)
 
@@ -288,7 +292,7 @@ class NPWarehouse(models.Model):
     # "Відділення №1: вул. Волонтерів, 16" — те, що бачить покупець у дропдауні.
     short_address = models.CharField("Коротка адреса", max_length=200, blank=True)
 
-    category = models.CharField("Тип", max_length=10, choices=Category.choices, db_index=True)
+    category = models.CharField("Тип", max_length=20, choices=Category.choices, db_index=True)
     type_ref = models.CharField("TypeOfWarehouse ref", max_length=36, blank=True)
 
     # --- обмеження прийому (ReceivingLimitationsOnDimensions) ---
