@@ -92,12 +92,21 @@ def test_apply_writes_confirmed_only(product: Product) -> None:
         product=product, attribute__code="programs_list"
     ).exists()
 
-    # НЕпідтверджене (noise_db, exact_code=False) НЕ записано
-    assert not ProductAttributeValue.objects.filter(
-        product=product, attribute__code="noise_db"
-    ).exists()
-    # count: 5 підтверджених + програми
+    # НЕпідтверджене (noise_db, exact_code=False) НЕ взято з джерела — стало заглушкою
+    noise = ProductAttributeValue.objects.get(product=product, attribute__code="noise_db")
+    assert noise.value_string == "Немає даних"
+    assert noise.value_number is None
+    # count рахує ЛИШЕ реальні дані: 5 підтверджених + програми (заглушки не рахуються)
     assert count == 6
+
+    # ГРІД ПОВНИЙ: усі поля шаблону присутні (значення або «Немає даних»)
+    from aispecs.category_specs import get_template
+    tpl_keys = {k for k in get_template("dishwasher") if not k.endswith("_list")}
+    present = set(
+        ProductAttributeValue.objects.filter(product=product, attribute__code__in=tpl_keys)
+        .values_list("attribute__code", flat=True)
+    )
+    assert present == tpl_keys
 
 
 def test_created_attributes_are_review_gated(product: Product) -> None:
@@ -150,6 +159,36 @@ def test_cannot_apply_twice(product: Product) -> None:
     apply_job(job)
     with pytest.raises(ApplyError):
         apply_job(job)
+
+
+def test_generic_specs_by_name(product: Product) -> None:
+    """Характеристика ПОЗА шаблоном (інша категорія) — створюється за назвою через словник."""
+    specs = [
+        # немає такого ключа в шаблоні посудомийок → generic за name_uk
+        {"key": "burners", "name_uk": "Кількість конфорок", "group_uk": "Основні",
+         "num": 4, "confidence": "high", "exact_code": True, "source_url": "https://bosch.pdf"},
+        {"key": "surface_material", "name_uk": "Матеріал поверхні", "group_uk": "Основні",
+         "text": "Загартоване скло", "confidence": "high", "exact_code": True},
+        {"key": "gas_control", "name_uk": "Газ-контроль", "text": "Так",
+         "confidence": "high", "exact_code": True},
+    ]
+    job = _job(product, specs=specs, programs=[])
+    n = apply_job(job)
+    assert n == 3
+
+    burners = ProductAttributeValue.objects.get(product=product, attribute__name_uk="Кількість конфорок")
+    assert burners.value_number == Decimal("4")
+    assert burners.attribute.value_type == Attribute.ValueType.NUMBER
+    assert burners.attribute.needs_review is True and burners.attribute.is_filterable is False
+    assert burners.attribute.unit is None  # одиницю не передали → без одиниці
+
+    mat = ProductAttributeValue.objects.get(product=product, attribute__name_uk="Матеріал поверхні")
+    assert mat.value_string == "Загартоване скло"
+    assert mat.attribute.value_type == Attribute.ValueType.STRING
+
+    gas = ProductAttributeValue.objects.get(product=product, attribute__name_uk="Газ-контроль")
+    assert gas.value_bool is True
+    assert gas.attribute.value_type == Attribute.ValueType.BOOL
 
 
 def test_reject(product: Product) -> None:

@@ -26,10 +26,16 @@ GROUPS: dict[str, tuple[str, int]] = {
 # Одиниці виміру: code -> (назва, синоніми)
 UNITS: dict[str, tuple[str, list[str]]] = {
     "cm": ("см", ["см", "cm"]),
+    "mm": ("мм", ["мм", "mm"]),
     "set": ("компл.", ["компл.", "компл", "комплектів", "комплекти"]),
+    "l": ("л", ["л", "l", "літрів"]),
     "l_cycle": ("л/цикл", ["л/цикл", "л"]),
     "kwh100": ("кВт·год/100", ["кВт·год/100 циклів", "кВт·год/100", "кВт·год"]),
+    "kwh": ("кВт·год", ["кВт·год", "kWh"]),
     "db": ("дБ", ["дБ", "db", "дб"]),
+    "w": ("Вт", ["Вт", "W", "вт", "ват"]),
+    "celsius": ("°C", ["°C", "°с", "градусів"]),
+    "pcs": ("шт", ["шт", "шт.", "штук"]),
 }
 
 # key -> (назва укр, група, тип значення, код одиниці|None)
@@ -59,11 +65,81 @@ DISHWASHER: dict[str, tuple[str, str, str, str | None]] = {
     "beam_on_floor": ("Промінь на підлозі", "features", "string", None),
 }
 
+# Духові шафи / пароварки
+OVEN: dict[str, tuple[str, str, str, str | None]] = {
+    "oven_type": ("Тип", "main", "option", None),
+    "volume_l": ("Обʼєм", "main", "number", "l"),
+    "cleaning_type": ("Тип очищення", "features", "option", None),
+    "energy_class": ("Клас енергоефективності", "efficiency", "option", None),
+    "heating_modes": ("Кількість режимів нагріву", "features", "number", None),
+    "max_temp": ("Максимальна температура", "main", "number", "celsius"),
+    "control_type": ("Тип керування", "main", "option", None),
+    "convection": ("Конвекція", "features", "string", None),
+    "grill": ("Гриль", "features", "string", None),
+    "steam_function": ("Функція пари", "features", "string", None),
+    "telescopic_rails": ("Телескопічні напрямні", "features", "string", None),
+    "meat_probe": ("Термощуп", "features", "string", None),
+    "display": ("Дисплей", "features", "string", None),
+    "timer": ("Таймер / годинник", "features", "string", None),
+    "connectivity": ("Wi-Fi / Smart", "features", "string", None),
+    "door_cooling": ("Охолодження / тип дверцят", "features", "string", None),
+    "auto_programs": ("Автоматичні програми", "features", "string", None),
+    "power_w": ("Потужність", "efficiency", "number", "w"),
+    "width_cm": ("Ширина", "dimensions", "number", "cm"),
+    "dimensions_hwd_cm": ("Розміри (В×Ш×Г)", "dimensions", "string", None),
+    "niche_size": ("Розміри ніші для встановлення", "dimensions", "string", None),
+    "color": ("Колір", "main", "option", None),
+}
+
+# Варильні поверхні (газові / індукційні / електричні — одна сітка)
+HOB: dict[str, tuple[str, str, str, str | None]] = {
+    "hob_type": ("Тип", "main", "option", None),
+    "burners": ("Кількість конфорок / зон", "main", "number", "pcs"),
+    "surface_material": ("Матеріал поверхні", "main", "option", None),
+    "control_type": ("Тип керування", "main", "option", None),
+    "installation_type": ("Тип встановлення", "main", "option", None),
+    "ignition": ("Автопідпал", "features", "string", None),
+    "gas_control": ("Газ-контроль (газова безпека)", "features", "string", None),
+    "residual_heat": ("Індикатор залишкового тепла", "features", "string", None),
+    "booster": ("Функція Booster", "features", "string", None),
+    "flex_zone": ("Flex-зона / обʼєднання зон", "features", "string", None),
+    "timer": ("Таймер", "features", "string", None),
+    "auto_off": ("Автовимкнення", "features", "string", None),
+    "safety_lock": ("Захист від дітей", "features", "string", None),
+    "power_w": ("Загальна потужність", "efficiency", "number", "w"),
+    "width_cm": ("Ширина", "dimensions", "number", "cm"),
+    "dimensions_hwd_cm": ("Розміри (В×Ш×Г)", "dimensions", "string", None),
+    "niche_size": ("Розміри ніші для встановлення", "dimensions", "string", None),
+    "color": ("Колір", "main", "option", None),
+}
+
 TEMPLATES: dict[str, dict[str, tuple[str, str, str, str | None]]] = {
     "dishwasher": DISHWASHER,
+    "oven": OVEN,
+    "hob": HOB,
 }
 
 
 def get_template(category_key: str) -> dict[str, tuple[str, str, str, str | None]]:
     """Шаблон характеристик для категорії; порожній dict — якщо категорії ще немає."""
     return TEMPLATES.get(category_key, {})
+
+
+def template_fields(category_key: str) -> list[dict]:
+    """Сітку категорії у вигляді для збирача: [{key, label, unit, type, group}].
+
+    Це те, що передається агентам — щоб КОЖЕН заповнював рівно ці рядки (одна структура
+    з будь-якого джерела). Джерело істини — той самий шаблон, що застосовує apply.
+    """
+    out = []
+    for key, (name, group_code, value_type, unit_code) in get_template(category_key).items():
+        if key.endswith("_list"):  # службові (перелік програм) — не в сітці
+            continue
+        out.append({
+            "key": key,
+            "label": name,
+            "unit": UNITS.get(unit_code, ("", []))[0] if unit_code else "",
+            "type": value_type,
+            "group": GROUPS.get(group_code, (group_code, 0))[0],
+        })
+    return out

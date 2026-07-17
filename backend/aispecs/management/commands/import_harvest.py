@@ -22,6 +22,18 @@ from aispecs.models import SpecHarvestJob
 from catalog.models import Product
 
 
+def _clean_desc(text: str) -> str:
+    """Прибрати артефакти структурованого виводу (буває у слабших моделей: у опис влазить
+    хвіст на кшталт `<parameter name="warnings">`). Обрізаємо на маркері й чистимо хвіст."""
+    if not text:
+        return ""
+    for marker in ("<parameter", "</parameter", "\\n<", '",\\n'):
+        i = text.find(marker)
+        if i != -1:
+            text = text[:i]
+    return text.rstrip(' \n\t\r",').strip()
+
+
 def _load(path: str) -> list[dict]:
     text = open(path, encoding="utf-8").read()
     # 1) цілий JSON (масив або {harvested:[...]})
@@ -88,7 +100,7 @@ class Command(BaseCommand):
                 primary_source_url=(p.get("primary_source_url") or "")[:1000],
                 proposed_specs=p.get("specs") or [],
                 proposed_programs=p.get("programs") or [],
-                proposed_description=p.get("description_uk") or "",
+                proposed_description=_clean_desc(p.get("description_uk") or ""),
                 warnings=p.get("warnings") or [],
             )
             created += 1

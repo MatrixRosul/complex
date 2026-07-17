@@ -91,6 +91,93 @@ def _get_option(attr: Attribute, value: str) -> AttributeOption:
     return opt
 
 
+_BOOL_TRUE = {"так", "є", "yes", "true", "1", "+", "да", "наявний", "присутній"}
+_BOOL_FALSE = {"ні", "немає", "no", "false", "0", "-", "нет", "відсутній"}
+
+
+def _infer_type(spec: dict) -> str:
+    """Тип значення для характеристики ПОЗА шаблоном (як sync._value_type)."""
+    if spec.get("num") is not None:
+        return Attribute.ValueType.NUMBER
+    text = (spec.get("text") or "").strip().casefold()
+    if text in _BOOL_TRUE or text in _BOOL_FALSE:
+        return Attribute.ValueType.BOOL
+    return Attribute.ValueType.STRING
+
+
+def _get_group_by_name(name: str) -> AttributeGroup:
+    name = (name or "Основні").strip()[:120]
+    grp = AttributeGroup.objects.filter(name__iexact=name).first()
+    if grp is not None:
+        return grp
+    code = slugify(name) or f"g{abs(hash(name)) % 10**5}"
+    base, n = code, 1
+    while AttributeGroup.objects.filter(code=code).exists():
+        n += 1
+        code = f"{base}-{n}"
+    grp = AttributeGroup.objects.create(code=code[:60], name=name, sort_order=60)
+    grp.name_uk = name
+    grp.save(update_fields=["name_uk"])
+    return grp
+
+
+def _get_unit_by_name(name: str | None) -> Unit | None:
+    if not name:
+        return None
+    name = name.strip()[:32]
+    if not name:
+        return None
+    unit = (
+        Unit.objects.filter(name_uk__iexact=name).first()
+        or Unit.objects.filter(aliases__contains=[name]).first()
+    )
+    if unit is not None:
+        return unit
+    code = slugify(name) or f"u{abs(hash(name)) % 10**5}"
+    base, n = code, 1
+    while Unit.objects.filter(code=code).exists():
+        n += 1
+        code = f"{base}-{n}"
+    unit = Unit.objects.create(code=code[:32], name=name, aliases=[name], needs_review=True)
+    unit.name_uk = name
+    unit.save(update_fields=["name_uk"])
+    return unit
+
+
+def _get_attribute_by_name(name: str, group_name: str, value_type: str, unit_name: str | None) -> Attribute:
+    """Знайти/створити характеристику за НАЗВОЮ — для категорій без шаблону.
+
+    Пошук по name_uk та aliases (як sync._find_by_name) — щоб «Витрата води» з різних
+    джерел не плодила дублі. Нова — needs_review=True, is_filterable=False.
+    """
+    name = name.strip()[:160]
+    attr = (
+        Attribute.objects.filter(name_uk__iexact=name).first()
+        or Attribute.objects.filter(aliases__contains=[name]).first()
+    )
+    if attr is not None:
+        return attr
+    code = slugify(name) or f"attr-{abs(hash(name)) % 10**6}"
+    base, n = code, 1
+    while Attribute.objects.filter(code=code).exists():
+        n += 1
+        code = f"{base}-{n}"
+    attr = Attribute.objects.create(
+        code=code[:80],
+        name=name,
+        group=_get_group_by_name(group_name),
+        unit=_get_unit_by_name(unit_name) if value_type == Attribute.ValueType.NUMBER else None,
+        value_type=value_type,
+        is_filterable=False,
+        filter_widget=Attribute.FilterWidget.NONE,
+        needs_review=True,
+        sort_order=100,
+    )
+    attr.name_uk = name
+    attr.save(update_fields=["name_uk"])
+    return attr
+
+
 def _to_decimal(spec: dict) -> Decimal | None:
     num = spec.get("num")
     if num is None:
@@ -159,8 +246,28 @@ def _set_value(product, attr: Attribute, value_type: str, spec: dict, source: st
     return True
 
 
+NO_DATA = "Немає даних"
+
+
+def _set_no_data(product, attr: Attribute, source: str) -> bool:
+    """Заповнити рядок сітки заглушкою «Немає даних» (щоб грід був повний у всіх товарів)."""
+    if ProductAttributeValue.objects.filter(
+        product=product, attribute=attr, source=ProductSource.MANUAL
+    ).exists():
+        return False
+    ProductAttributeValue.objects.filter(product=product, attribute=attr).exclude(
+        source=ProductSource.MANUAL
+    ).delete()
+    pav = ProductAttributeValue.objects.create(
+        product=product, attribute=attr, value_string=NO_DATA, source=source
+    )
+    pav.value_string_uk = NO_DATA
+    pav.save(update_fields=["value_string_uk"])
+    return True
+
+
 @transaction.atomic
-def apply_job(job: SpecHarvestJob, user=None, *, set_description: bool = True) -> int:
+def apply_job(job: SpecHarvestJob, user=None, *, set_description: bool = True, fill_empty: bool = True) -> int:
     """Застосувати пропозицію: записати підтверджені характеристики + опис у товар.
 
     Повертає кількість записаних полів. Кидає ApplyError, якщо статус не той.
@@ -177,17 +284,29 @@ def apply_job(job: SpecHarvestJob, user=None, *, set_description: bool = True) -
     order_by_key = {key: (i + 1) * 10 for i, key in enumerate(template)}
     product = job.product
     count = 0
+    filled: set[str] = set()
 
     for spec in job.proposed_specs or []:
         if spec.get("exact_code") is False:  # лише підтверджене точним кодом
             continue
         key = spec.get("key")
-        tdef = template.get(key)
-        if not tdef:
+        tdef = template.get(key) if key else None
+        if tdef:
+            # характеристика зі стандартного шаблону категорії (уніфікована)
+            attr = _get_attribute(key, tdef, order_by_key.get(key, 100))
+            value_type = tdef[2]
+        elif (spec.get("name_uk") or "").strip():
+            # характеристика поза шаблоном — створюємо за назвою через словник
+            value_type = _infer_type(spec)
+            attr = _get_attribute_by_name(
+                spec["name_uk"], spec.get("group_uk") or "Основні", value_type, spec.get("unit")
+            )
+        else:
             continue
-        attr = _get_attribute(key, tdef, order_by_key.get(key, 100))
-        if _set_value(product, attr, tdef[2], spec, ProductSource.AI):
+        if _set_value(product, attr, value_type, spec, ProductSource.AI):
             count += 1
+            if key:
+                filled.add(key)
 
     # перелік програм — окремий рядок-характеристика
     if job.proposed_programs and "programs_list" in template:
@@ -197,6 +316,17 @@ def apply_job(job: SpecHarvestJob, user=None, *, set_description: bool = True) -
         joined = ", ".join(str(p) for p in job.proposed_programs)
         if _set_value(product, attr, "string", {"text": joined}, ProductSource.AI):
             count += 1
+            filled.add("programs_list")
+
+    # ГРІД: заповнюємо решту рядків сітки заглушкою «Немає даних», щоб структура була
+    # однакова в УСІХ товарів категорії (вимога замовника). У applied_count не рахуємо —
+    # це не реальні дані.
+    if fill_empty and template:
+        for key, tdef in template.items():
+            if key in filled or key.endswith("_list"):
+                continue
+            attr = _get_attribute(key, tdef, order_by_key.get(key, 100))
+            _set_no_data(product, attr, ProductSource.AI)
 
     # опис — лише якщо порожній (ручну роботу не чіпаємо)
     if set_description and job.proposed_description and not (product.description_uk or "").strip():
