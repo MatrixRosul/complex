@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { notFound } from "next/navigation";
 
 import { Header } from "@/components/layout/header";
@@ -21,6 +21,27 @@ import "../globals.css";
 export function generateStaticParams() {
   return locales.map((locale) => ({ locale }));
 }
+
+/**
+ * ⚠️ Раніше цього export взагалі не було — Next віддавав дефолт
+ * `width=device-width, initial-scale=1`, тобто БЕЗ `interactive-widget`.
+ *
+ * Дефолт браузера — `interactive-widget=resizes-visual`: коли виїжджає екранна
+ * клавіатура, лейаут-вьюпорт НЕ вкорочується. Для звичайної сторінки це непомітно,
+ * але для `fixed`-панелі чату означало, що її низ (поле вводу) ховається під
+ * клавіатурою. `resizes-content` вкорочує саме лейаут-вьюпорт — і fixed-панель
+ * сама стає рівно на видиму частину екрана.
+ *
+ * Працює на Android/Chrome. iOS Safari цей meta ігнорує — там те саме робить
+ * VisualViewport API (hooks/use-visual-viewport.ts). Потрібні обидва.
+ *
+ * initial-scale=1 без maximum-scale — зум пальцями лишається доступним (WCAG 1.4.4).
+ */
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  interactiveWidget: "resizes-content",
+};
 
 export async function generateMetadata({
   params,

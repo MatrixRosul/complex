@@ -10,6 +10,7 @@ import { ChatMessage } from "@/components/assistant/chat-message";
 import { streamChat, type AssistantEvent } from "@/lib/api/assistant";
 import { ApiError } from "@/lib/api/types";
 import { useAssistantStore } from "@/store/assistant";
+import { useVisualViewport } from "@/hooks/use-visual-viewport";
 import { useLocale, useT } from "@/i18n/provider";
 import { localeToApiLang } from "@/i18n/config";
 import type { TranslationKey } from "@/i18n/dictionary";
@@ -60,13 +61,34 @@ export function ChatPanel({ onClose }: { onClose: () => void }) {
   const setStreamPhase = useAssistantStore((s) => s.setStreamPhase);
 
   const [draft, setDraft] = useState("");
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const viewport = useVisualViewport();
 
   // Автоскрол донизу — і на нове повідомлення, і на кожен токен, що дописується
   // в останнє (масив messages — нова референція на кожен `appendAssistantToken`).
+  //
+  // ⚠️ Скролимо ВИКЛЮЧНО вьюпорт історії, руками через scrollTop. Тут раніше стояв
+  // `bottomRef.scrollIntoView()`, і це був баг: scrollIntoView скролить УСІХ
+  // scrollable-предків, включно з документом. На мобільному з відкритою клавіатурою
+  // браузер і так підскролює сторінку до сфокусованого поля — і на кожен токен стріму
+  // сюди прилітав ще один скрол документа. Сторінка сіпалась під пальцем, а панель
+  // «їздила». Пряме присвоєння scrollTop фізично не може зачепити нічого, крім історії.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: "end" });
+    const view = scrollRef.current?.querySelector<HTMLElement>(
+      '[data-slot="scroll-area-viewport"]',
+    );
+    if (view) view.scrollTop = view.scrollHeight;
   }, [messages]);
+
+  // Автофокус — ТІЛЬКИ на десктопі. На мобільному `autoFocus` (який тут і стояв)
+  // піднімав клавіатуру ще до того, як людина щось прочитала: панель відкривалась
+  // уже наполовину з'їденою, з прикладами питань під клавіатурою. На телефоні поле
+  // фокусується тапом — тоді клавіатура доречна й очікувана.
+  useEffect(() => {
+    if (window.matchMedia("(min-width: 640px)").matches) inputRef.current?.focus();
+  }, []);
 
   function applyEvent(event: AssistantEvent, assistantId: string) {
     switch (event.type) {
@@ -135,9 +157,21 @@ export function ChatPanel({ onClose }: { onClose: () => void }) {
       onKeyDown={(e) => {
         if (e.key === "Escape") onClose();
       }}
+      style={
+        {
+          // Фолбек 100dvh/0px тримає перший рендер і випадок, коли VisualViewport
+          // недоступний: поводиться рівно як старий inset-0, не гірше.
+          "--chat-h": viewport ? `${viewport.height}px` : "100dvh",
+          "--chat-top": viewport ? `${viewport.offsetTop}px` : "0px",
+        } as React.CSSProperties
+      }
       className={cn(
-        "fixed inset-0 z-50 flex flex-col bg-popover text-popover-foreground",
-        "sm:inset-auto sm:right-6 sm:bottom-24 sm:h-[560px] sm:w-[380px]",
+        "fixed z-50 flex flex-col bg-popover text-popover-foreground",
+        // Мобільний: розпираємо по візуальному вьюпорту, а не по лейаут-вьюпорту.
+        // Сторони задані явно (не inset-0), щоб кожну можна було перебити sm:-аналогом —
+        // inset-shorthand і top-longhand конфліктують у каскаді непередбачувано.
+        "top-[var(--chat-top)] left-0 h-[var(--chat-h)] w-full",
+        "sm:top-auto sm:left-auto sm:right-6 sm:bottom-24 sm:h-[560px] sm:w-[380px]",
         "sm:rounded-xl sm:border sm:border-border sm:shadow-2xl",
       )}
     >
@@ -164,7 +198,13 @@ export function ChatPanel({ onClose }: { onClose: () => void }) {
       </div>
 
       {/* ── Історія ───────────────────────────────────────────────────── */}
-      <ScrollArea className="min-h-0 flex-1">
+      {/* overscroll-contain: догортавши історію до краю, палець не починає тягнути
+          сторінку ПІД панеллю (scroll chaining). На мобільному це читалось як
+          «панель поїхала разом із сайтом». */}
+      <ScrollArea
+        ref={scrollRef}
+        className="min-h-0 flex-1 [&_[data-slot=scroll-area-viewport]]:overscroll-contain"
+      >
         <div className="flex flex-col gap-3 p-4">
           {messages.length === 0 ? (
             <EmptyState onPick={send} />
@@ -173,7 +213,6 @@ export function ChatPanel({ onClose }: { onClose: () => void }) {
               <ChatMessage key={message.id} message={message} locale={locale} />
             ))
           )}
-          <div ref={bottomRef} />
         </div>
       </ScrollArea>
 
@@ -185,14 +224,19 @@ export function ChatPanel({ onClose }: { onClose: () => void }) {
           void send(draft);
         }}
       >
+        {/* ⚠️ Поле СВІДОМО не disabled під час стріму (раніше було `disabled={isStreaming}`).
+            disabled знімає фокус — а на мобільному втрата фокуса закриває клавіатуру.
+            Тобто клавіатура згорталась після КОЖНОГО відправленого повідомлення, і щоб
+            дописати наступне, треба було тапати по полю заново. Захист від подвійної
+            відправки лишається там, де й був: `send()` виходить на `isStreaming`, а
+            кнопка Send disabled — блокувати ще й саме поле було зайвим. */}
         <Input
+          ref={inputRef}
           value={draft}
           onChange={(e) => setDraft(e.target.value.slice(0, MAX_INPUT_LENGTH))}
           placeholder={t("assistant.panel.placeholder")}
           aria-label={t("assistant.panel.placeholder")}
-          disabled={isStreaming}
           maxLength={MAX_INPUT_LENGTH}
-          autoFocus
         />
         <Button
           type="submit"
