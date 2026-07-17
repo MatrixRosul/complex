@@ -531,10 +531,8 @@ class ProductAdmin(WysiwygBodyMixin, ModelAdmin, TabbedTranslationAdmin):
         "old_price",
         "usd_rate_used",
         "price_updated_at",
-        "package_weight_kg",
-        "package_width_cm",
-        "package_height_cm",
-        "package_depth_cm",
+        # package_* габарити — РЕДАГОВАНІ (менеджер може підкоригувати вручну).
+        # package_dims_source лишаємо readonly: це статус-замок, ним керує save_model.
         "package_dims_source",
         "warranty_months",
         "name_normalized",
@@ -799,6 +797,16 @@ class ProductAdmin(WysiwygBodyMixin, ModelAdmin, TabbedTranslationAdmin):
         """Ціна рахується ТУТ (вона readonly у формі), історія — PG-тригером з reason='manual'."""
         if not change:
             obj.source = ProductSource.MANUAL
+
+        # Ручна правка габаритів упаковки → ставимо замок MANUAL, щоб синк їх НЕ затер
+        # (sync/services.py::_apply_package_and_warranty перевіряє саме package_dims_source).
+        # Очищено всі чотири → знімаємо замок, хай синк знову заповнює з таблиці характеристик.
+        _pkg = ("package_weight_kg", "package_width_cm", "package_height_cm", "package_depth_cm")
+        if any(f in form.changed_data for f in _pkg):
+            if any(getattr(obj, f) is not None for f in _pkg):
+                obj.package_dims_source = ProductSource.MANUAL
+            else:
+                obj.package_dims_source = ProductSource.SHEET
 
         obj.denorm_dirty = True  # будь-яка ручна правка робить проєкцію застарілою
 
