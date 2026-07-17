@@ -32,6 +32,7 @@ from typing import Any
 from django.core.cache import cache
 
 from delivery.client import (
+    UZHHOROD_CITY_REF,
     NovaPoshtaClient,
     NovaPoshtaError,
     NovaPoshtaUnavailable,
@@ -102,6 +103,7 @@ def _week_stamp() -> str:
 
 def _cache_key(
     *,
+    city_sender: str,
     city_ref: str,
     service_type: str,
     weight_kg: Decimal,
@@ -112,9 +114,11 @@ def _cache_key(
 ) -> str:
     # Числа НОРМАЛІЗОВАНІ до фіксованої точності — інакше 2 і 2.000 дали б різні ключі
     # і кеш ніколи б не влучав.
+    # city_sender у ключі — зміна відправника (SiteSettings.np_sender_city_ref) мусить
+    # скидати кеш, інакше ціни рахувались би зі старого міста ще добу.
     rd = "0" if redelivery is None else f"{redelivery:.2f}"
     return (
-        f"np:quote:{city_ref}:{service_type}:{weight_kg:.3f}:{volume_m3:.5f}"
+        f"np:quote:{city_sender}:{city_ref}:{service_type}:{weight_kg:.3f}:{volume_m3:.5f}"
         f":{cost_declared:.2f}:{seats}:{rd}:{_week_stamp()}"
     )
 
@@ -186,6 +190,11 @@ def quote(
         Decimal("0.01")
     )
 
+    # Місто відправника — з налаштувань (адмінка), а не з константи. Порожнє поле → Ужгород.
+    from core.models import SiteSettings
+
+    city_sender = SiteSettings.get_solo().np_sender_city_ref or UZHHOROD_CITY_REF
+
     base = QuoteResult(
         ok=False,
         service_type=svc,
@@ -199,6 +208,7 @@ def quote(
     )
 
     key = _cache_key(
+        city_sender=city_sender,
         city_ref=city_ref,
         service_type=svc,
         weight_kg=dims.weight_kg,
@@ -224,6 +234,7 @@ def quote(
     np = client or get_web_client()
     try:
         raw = np.get_document_price(
+            city_sender=city_sender,
             city_recipient=city_ref,
             weight_kg=dims.weight_kg,
             cost_declared=cost_declared,
