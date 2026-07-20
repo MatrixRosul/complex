@@ -3019,7 +3019,15 @@ def rebuild_denorm(product_ids: Sequence[int]) -> int:
             if not value_uk:
                 continue
 
-            base = {"code": attr.code, "g": attr.group.name, "gs": attr.group.sort_order}
+            # ⚡ "s" = Attribute.sort_order — порядок характеристики ВСЕРЕДИНІ групи.
+            #   Без нього cards.py сортує рядки по (0, name), тобто за алфавітом,
+            #   і порядок з адмінки на сайт не доїжджає.
+            base = {
+                "code": attr.code,
+                "g": attr.group.name,
+                "gs": attr.group.sort_order,
+                "s": attr.sort_order,
+            }
             specs_uk.append(
                 base
                 | {

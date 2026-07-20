@@ -108,7 +108,7 @@ def grouped_specs(product: Product, lang: str) -> list[dict[str, Any]]:
 
     buckets: dict[str, dict[str, Any]] = {}
 
-    for row in specs:
+    for index, row in enumerate(specs):
         if not isinstance(row, dict):
             continue
         group_name = str(row.get("g") or "")
@@ -126,12 +126,23 @@ def grouped_specs(product: Product, lang: str) -> list[dict[str, Any]]:
                 "display": spec_display(row),
                 "vn": row.get("vn"),
                 "sort": row.get("s") or 0,
+                # ⚡ позиція в specs_json — тайбрейк замість назви (див. нижче).
+                "_pos": index,
             }
         )
 
     groups = sorted(buckets.values(), key=lambda g: (g["group_sort"], g["group"]))
     for group in groups:
-        group["rows"].sort(key=lambda r: (r["sort"], r["name"]))
+        # ⚡ ТАЙБРЕЙК — ПОЗИЦІЯ, А НЕ НАЗВА. Раніше тут стояло (sort, name): у 95% характеристик
+        #   sort_order лежить на дефолті 100, тож ключ вироджувався в (0, name) і група
+        #   перевпорядковувалась ЗА АЛФАВІТОМ — «Висота для монтажу» пролізала поперед
+        #   «Управління», хоча в адмінці порядок правильний. specs_json уже складений
+        #   у потрібному порядку (sync.services.rebuild_denorm сортує по
+        #   group.sort_order → attribute.sort_order → attribute_id) — його треба зберегти,
+        #   а не вигадати новий (див. докстрінг).
+        group["rows"].sort(key=lambda r: (r["sort"], r["_pos"]))
+        for row in group["rows"]:
+            del row["_pos"]
     return groups
 
 
@@ -398,6 +409,8 @@ def compare_products(ids: list[int], lang: str) -> dict[str, Any]:
                         "group": group["group"],
                         "group_sort": group["group_sort"],
                         "sort": row["sort"],
+                        # ⚡ як і в grouped_specs — тайбрейк позицією, не назвою.
+                        "pos": len(rows),
                     }
                 values.setdefault(code, {})[product.pk] = row["display"]
 
@@ -423,11 +436,14 @@ def compare_products(ids: list[int], lang: str) -> dict[str, Any]:
                 "values": cells,
                 "is_different": is_different,
                 "sort": meta["sort"],
+                "_pos": meta["pos"],
             }
         )
 
     groups = sorted(buckets.values(), key=lambda g: (g["group_sort"], g["group"]))
     for group in groups:
-        group["rows"].sort(key=lambda r: (r["sort"], r["name"]))
+        group["rows"].sort(key=lambda r: (r["sort"], r["_pos"]))
+        for row in group["rows"]:
+            del row["_pos"]
 
     return {"products": products, "groups": groups}
