@@ -20,15 +20,19 @@
    data_start_row). Це свідомо: постачальник вставить рядок у таблицю або перейменує колонку —
    і це МУСИТЬ правитись в адмінці, без деплою (SYNC.md §1.5).
 
-⚠️ КНОПКИ-ЗАГЛУШКИ. Celery-задач (sync.tasks) ще немає. Кнопки вже є — і вони чесні:
-   ставлять SyncRun у статус SKIPPED + WARN-запис у журнал і кажуть прямим текстом, що
-   задача буде підключена наступним кроком. Коли sync.tasks з'явиться — кнопка почне
-   реально запускати задачу БЕЗ зміни коду адмінки (див. _dispatch_task нижче).
+⚡ КНОПКИ СТАВЛЯТЬ РЕАЛЬНІ ЗАДАЧІ, і задачі імпортуються ЗВЕРХУ (`from sync.tasks import …`),
+   а не по рядку через importlib. Це не стиль, це урок: доки тут був «розумний» диспетчер
+   за dotted-path, кнопка «Відкотити прогін» рік викликала неіснуючу `rollback_run` і падала
+   в рантаймі, а «Оновити зараз» передавала параметр, якого в задачі немає. Прямий імпорт
+   ламає збірку на старті — тобто в CI, а не під руками менеджера.
+
+🔴 SyncRun СТВОРЮЄ ЗАДАЧА, НЕ АДМІНКА. `run_price_sync()` заводить прогін сама, всередині
+   advisory-локу (sync/services.py:1603). Якщо створити SyncRun ще й тут, у журналі осідає
+   вічний RUNNING-фантом, якого ніхто не закриє.
 """
 
 from __future__ import annotations
 
-import importlib
 import io
 import json
 
@@ -59,6 +63,7 @@ from sync.models import (
     SyncRun,
     UsdRateChange,
 )
+from sync.tasks import rollback_sync_run, sync_prices
 
 STATUS_LABELS: dict[str, str] = {
     SyncRun.Status.RUNNING: "info",
@@ -102,8 +107,6 @@ STATS_LABELS: tuple[tuple[str, str], ...] = (
     ("products_auto_activated", "Автоматично активовано (дані доповнено)"),
 )
 
-STUB_MESSAGE = "Задача синхронізації буде підключена наступним кроком (sync.tasks)."
-
 
 # ---------------------------------------------------------------------------
 # Спільне
@@ -135,23 +138,6 @@ def pretty_json(value) -> str:
         len(dumped),
         dumped,
     )
-
-
-def _dispatch_task(dotted_path: str, **kwargs) -> bool:
-    """
-    Спробувати поставити Celery-задачу. Повертає False, якщо задачі ще НЕ ІСНУЄ.
-
-    Саме через це кнопки нижче не доведеться переписувати: щойно з'явиться sync.tasks —
-    import спрацює, і заглушка сама перетвориться на реальний запуск.
-    """
-    module_path, _, task_name = dotted_path.rpartition(".")
-    try:
-        module = importlib.import_module(module_path)
-        task = getattr(module, task_name)
-    except (ImportError, AttributeError):
-        return False
-    task.delay(**kwargs)
-    return True
 
 
 # ---------------------------------------------------------------------------
@@ -561,7 +547,7 @@ class SyncRunAdmin(ReadOnlyAdmin):
         variant=ActionVariant.PRIMARY,
     )
     def sync_now(self, request: HttpRequest) -> HttpResponse:
-        """Кнопка з ТЗ. Поки sync.tasks немає — чесна заглушка (див. шапку модуля)."""
+        """Кнопка з ТЗ. Прогін заводить сама задача — тут лише запуск (див. шапку модуля)."""
         source = (
             PriceSource.objects.filter(is_active=True, is_primary=True).first()
             or PriceSource.objects.filter(is_active=True).first()
@@ -575,51 +561,25 @@ class SyncRunAdmin(ReadOnlyAdmin):
             )
             return redirect(reverse("admin:sync_pricesource_changelist"))
 
-        queued = _dispatch_task("sync.tasks.sync_prices", price_source_id=source.pk)
-
-        now = timezone.now()
-        run = SyncRun.objects.create(
-            kind=SyncRun.Kind.SHEETS_PRICES,
-            price_source=source,
+        sync_prices.delay(
+            source_id=source.pk,
+            started_by=request.user.pk,
             trigger=SyncRun.Trigger.MANUAL,
-            started_by=request.user,
-            status=SyncRun.Status.RUNNING if queued else SyncRun.Status.SKIPPED,
-            finished_at=None if queued else now,
-            duration_ms=None if queued else 0,
         )
-        SyncLogEntry.objects.create(
-            run=run,
-            level=SyncLogEntry.Level.INFO if queued else SyncLogEntry.Level.WARN,
-            action=SyncLogEntry.Action.SKIPPED,
-            message=(
-                f"Задачу поставлено в чергу вручну з адмінки (джерело {source.code})."
-                if queued
-                else f"Запуск вручну з адмінки (джерело {source.code}). {STUB_MESSAGE}"
-            ),
+        self.message_user(
+            request,
+            f"Прогін запущено (джерело «{source.name}»). Оновіть сторінку за хвилину. "
+            "Якщо інший прогін цього джерела вже йде, новий стане SKIPPED — це нормально.",
+            level=messages.SUCCESS,
         )
-
-        if queued:
-            self.message_user(
-                request,
-                f"Прогін запущено (джерело «{source.name}»). Оновіть сторінку за хвилину.",
-                level=messages.SUCCESS,
-            )
-        else:
-            self.message_user(
-                request,
-                f"Прогін зафіксовано у журналі (джерело «{source.name}»), "
-                f"але даних НЕ ЗАВАНТАЖЕНО: {STUB_MESSAGE}",
-                level=messages.WARNING,
-            )
         return redirect(reverse("admin:sync_syncrun_changelist"))
 
     @admin.action(description="Відкотити прогін (за знімком цін)")
     def rollback_run(self, request: HttpRequest, queryset) -> None:
         """
-        Відкат по ProductPriceSnapshot (SYNC.md §5) — поки заглушка.
+        Відкат по ProductPriceSnapshot (SYNC.md §5).
 
-        Показуємо РЕАЛЬНУ цифру: скільки товарів у знімку і скільки з них досі «незаймані»
-        (Product.synced_at == мітка прогону). Це те, що відкат реально зачепив би.
+        Показуємо РЕАЛЬНУ цифру: скільки товарів у знімку — це те, що відкат зачепить.
         """
         for run in queryset:
             snapshots = ProductPriceSnapshot.objects.filter(run=run).count()
@@ -632,20 +592,12 @@ class SyncRunAdmin(ReadOnlyAdmin):
                 )
                 continue
 
-            queued = _dispatch_task("sync.tasks.rollback_run", run_id=str(run.pk))
-            if queued:
-                self.message_user(
-                    request,
-                    f"Відкат прогону {run.pk} поставлено в чергу ({snapshots} товарів у знімку).",
-                    level=messages.SUCCESS,
-                )
-            else:
-                self.message_user(
-                    request,
-                    f"Прогін {run.pk}: у знімку {snapshots} товарів. ВІДКАТ НЕ ВИКОНАНО — "
-                    f"{STUB_MESSAGE} Дані каталогу не змінено.",
-                    level=messages.WARNING,
-                )
+            rollback_sync_run.delay(run_id=str(run.pk), user_id=request.user.pk)
+            self.message_user(
+                request,
+                f"Відкат прогону {run.pk} поставлено в чергу ({snapshots} товарів у знімку).",
+                level=messages.SUCCESS,
+            )
 
 
 @admin.register(SyncLogEntry)

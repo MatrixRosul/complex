@@ -30,6 +30,7 @@ from typing import Any
 
 from django import forms
 from django.contrib import admin, messages
+from django.db import transaction
 from django.db.models import Count, QuerySet
 from django.http import HttpRequest, HttpResponse
 from django.urls import reverse
@@ -80,6 +81,7 @@ from catalog.services.merge import (
 from catalog.services.pricing import PriceError, compute_uah_price, price_reason, recalc_products
 from cms.admin import WysiwygBodyMixin
 from core.models import SiteSettings
+from sync.tasks import rebuild_product_denorm
 
 log = logging.getLogger(__name__)
 
@@ -334,9 +336,7 @@ class ProductAttributeValueInline(TabularInline, TranslationTabularInline):
         else:
             value = obj.value_string
         unit = attr.unit.name if attr.unit_id else ""
-        return format_html(
-            "<b>{}</b>: {}", attr.name, f"{value} {unit}".strip() or "—"
-        )
+        return format_html("<b>{}</b>: {}", attr.name, f"{value} {unit}".strip() or "—")
 
 
 class VariantItemInline(TabularInline, TranslationTabularInline):
@@ -760,9 +760,7 @@ class ProductAdmin(WysiwygBodyMixin, ModelAdmin, TabbedTranslationAdmin):
     @display(description="Ціна, грн (обчислена)")
     def price_display(self, obj: Product) -> SafeString:
         if obj.pk is None or obj.price is None:
-            return format_html(
-                '<span style="opacity:.6">Буде обчислена при збереженні.</span>'
-            )
+            return format_html('<span style="opacity:.6">Буде обчислена при збереженні.</span>')
         solo = SiteSettings.get_solo()
         formula = (
             f"{_fmt_number(obj.base_price)} {obj.source_currency}"
@@ -888,11 +886,13 @@ class ProductAdmin(WysiwygBodyMixin, ModelAdmin, TabbedTranslationAdmin):
 
     @admin.action(description="Перебудувати денормалізацію")
     def act_rebuild_denorm(self, request: HttpRequest, queryset: QuerySet[Product]) -> None:
+        ids = list(queryset.values_list("pk", flat=True))
         n = queryset.update(denorm_dirty=True)
-        messages.warning(
+        transaction.on_commit(lambda: rebuild_product_denorm.delay(ids))
+        messages.success(
             request,
-            f"{n} товар(ів) позначено на перебудову. Проєкцію (specs_json, filter_tokens) "
-            "перебудує задача rebuild_product_denorm — вона з'явиться наступним кроком.",
+            f"{n} товар(ів) поставлено на перебудову проєкції (specs_json, filter_tokens). "
+            "Оновіть сторінку за хвилину.",
         )
 
     # -- дії на картці товару ---------------------------------------------
@@ -908,7 +908,9 @@ class ProductAdmin(WysiwygBodyMixin, ModelAdmin, TabbedTranslationAdmin):
         if product is None:
             messages.error(request, "Товар не знайдено.")
         elif product.price_locked:
-            messages.warning(request, "Ціна зафіксована («Ціна зафіксована» = ✓). Перерахунок пропущено.")
+            messages.warning(
+                request, "Ціна зафіксована («Ціна зафіксована» = ✓). Перерахунок пропущено."
+            )
         else:
             try:
                 recalc_products([product])
@@ -925,10 +927,10 @@ class ProductAdmin(WysiwygBodyMixin, ModelAdmin, TabbedTranslationAdmin):
     )
     def detail_rebuild_denorm(self, request: HttpRequest, object_id: int) -> HttpResponse:
         Product.objects.filter(pk=object_id).update(denorm_dirty=True)
-        messages.warning(
+        transaction.on_commit(lambda: rebuild_product_denorm.delay([int(object_id)]))
+        messages.success(
             request,
-            "Товар позначено на перебудову проєкції. Задача rebuild_product_denorm "
-            "з'явиться наступним кроком.",
+            "Товар поставлено на перебудову проєкції. Оновіть сторінку за хвилину.",
         )
         return self._back_to_change(object_id)
 
@@ -997,7 +999,16 @@ class CategoryAdmin(ModelAdmin, TabbedTranslationAdmin):
                 )
             },
         ),
-        ("Медіа", {"fields": ("icon", "image")}),
+        (
+            "Медіа",
+            {
+                "fields": ("icon", "image"),
+                "description": "Два РІЗНІ зображення: «Міні-емблема» — маленький значок групи "
+                "в меню каталогу, «Плитка» — велике фото для головної сторінки. Обидва "
+                "необовʼязкові: без емблеми в меню буде сама назва, без плитки — типове "
+                "оформлення. Завантажене видно в колонці «Емблема» у списку категорій.",
+            },
+        ),
         (
             "Hotline",
             {
@@ -1110,18 +1121,14 @@ class CategoryAdmin(ModelAdmin, TabbedTranslationAdmin):
     def act_hotline_branch_off(self, request: HttpRequest, queryset: QuerySet[Category]) -> None:
         self._branch(request, queryset, enabled=False)
 
-    def _branch(
-        self, request: HttpRequest, queryset: QuerySet[Category], *, enabled: bool
-    ) -> None:
+    def _branch(self, request: HttpRequest, queryset: QuerySet[Category], *, enabled: bool) -> None:
         total_p = total_c = 0
         for category in queryset:
             p, c = set_hotline_for_category(category, enabled=enabled, include_descendants=True)
             total_p += p
             total_c += c
         verb = "увімкнено" if enabled else "вимкнено"
-        messages.success(
-            request, f"Hotline {verb}: товарів — {total_p}, категорій — {total_c}."
-        )
+        messages.success(request, f"Hotline {verb}: товарів — {total_p}, категорій — {total_c}.")
 
 
 # ---------------------------------------------------------------------------
@@ -1136,8 +1143,15 @@ class NoDeleteMixin:
 
 @admin.register(Brand)
 class BrandAdmin(NoDeleteMixin, ModelAdmin):
-    list_display = ("logo_preview", "name", "slug", "aliases_badge", "products_badge",
-                    "is_active", "review_badge")
+    list_display = (
+        "logo_preview",
+        "name",
+        "slug",
+        "aliases_badge",
+        "products_badge",
+        "is_active",
+        "review_badge",
+    )
     list_display_links = ("name",)
     list_editable = ("is_active",)
     list_filter = (("needs_review", BooleanRadioFilter), ("is_active", BooleanRadioFilter))
@@ -1198,7 +1212,9 @@ class BrandAdmin(NoDeleteMixin, ModelAdmin):
             "form_submit_text": "Злити",
         },
     )
-    def detail_merge(self, request: HttpRequest, form: BrandMergeForm, object_id: int) -> HttpResponse:
+    def detail_merge(
+        self, request: HttpRequest, form: BrandMergeForm, object_id: int
+    ) -> HttpResponse:
         src = self.get_object(request, object_id)
         dst = form.cleaned_data["target"]
         try:
@@ -1212,8 +1228,15 @@ class BrandAdmin(NoDeleteMixin, ModelAdmin):
 
 @admin.register(Country)
 class CountryAdmin(NoDeleteMixin, ModelAdmin, TabbedTranslationAdmin):
-    list_display = ("flag_preview", "name", "code", "slug", "aliases_badge", "products_badge",
-                    "review_badge")
+    list_display = (
+        "flag_preview",
+        "name",
+        "code",
+        "slug",
+        "aliases_badge",
+        "products_badge",
+        "review_badge",
+    )
     list_display_links = ("name",)
     list_filter = (("needs_review", BooleanRadioFilter),)
     list_filter_submit = True
@@ -1422,7 +1445,15 @@ class AttributeAdmin(ModelAdmin, TabbedTranslationAdmin):
             {
                 "fields": ("name", "code", "group", "unit", "value_type", "sort_order"),
                 "description": "У НАЗВІ одиниці бути не може: «Висота» + одиниця «мм», "
-                "а не «Висота (мм)». На картці це рендериться як <b>Висота: 284 мм</b>.",
+                "а не «Висота (мм)». На картці це рендериться як <b>Висота: 284 мм</b>.<br>"
+                "<b>Порядок</b> — це місце характеристики <b>всередині своєї групи</b> на "
+                "сайті: менше число = вище. Порядок самих груп задається в "
+                "«Групи характеристик». Зручніше правити пачкою: у списку характеристик "
+                "відфільтруйте за групою і проставте 10, 20, 30… прямо в колонці «Порядок» "
+                "(поле редагується просто в списку). Проміжки лишайте — буде куди вставити "
+                "нову характеристику, не перенумеровуючи все.<br>"
+                "Зміна порядку доїжджає на сайт не миттєво: картки товарів перебудовуються "
+                "фоново, зазвичай протягом 5 хвилин.",
             },
         ),
         (
@@ -1504,8 +1535,15 @@ class AttributeAdmin(ModelAdmin, TabbedTranslationAdmin):
 
 @admin.register(AttributeOption)
 class AttributeOptionAdmin(NoDeleteMixin, ModelAdmin, TabbedTranslationAdmin):
-    list_display = ("value", "attribute", "slug", "swatch_preview", "usage_badge",
-                    "sort_order", "review_badge")
+    list_display = (
+        "value",
+        "attribute",
+        "slug",
+        "swatch_preview",
+        "usage_badge",
+        "sort_order",
+        "review_badge",
+    )
     list_display_links = ("value",)
     list_editable = ("sort_order",)
     list_select_related = ("attribute",)
@@ -1622,8 +1660,10 @@ class VariantGroupAdmin(ModelAdmin, TabbedTranslationAdmin):
     def get_queryset(self, request: HttpRequest) -> QuerySet[VariantGroup]:
         return super().get_queryset(request).annotate(n_items=Count("items"))
 
-    @display(description="Віджет", label={"Кнопки (діагональ, об'єм)": "info",
-                                          "Кружечки (колір)": "success"})
+    @display(
+        description="Віджет",
+        label={"Кнопки (діагональ, об'єм)": "info", "Кружечки (колір)": "success"},
+    )
     def widget_badge(self, obj: VariantGroup) -> str:
         return obj.get_widget_display()
 
@@ -1655,8 +1695,10 @@ class RelatedGroupAdmin(ModelAdmin, TabbedTranslationAdmin):
     def get_queryset(self, request: HttpRequest) -> QuerySet[RelatedGroup]:
         return super().get_queryset(request).annotate(n_items=Count("items"))
 
-    @display(description="Тип", label={"Комплект (взаємно)": "success", "Аксесуари": "info",
-                                       "Разом купують": "warning"})
+    @display(
+        description="Тип",
+        label={"Комплект (взаємно)": "success", "Аксесуари": "info", "Разом купують": "warning"},
+    )
     def kind_badge(self, obj: RelatedGroup) -> str:
         return obj.get_kind_display()
 
@@ -1676,8 +1718,14 @@ class PriceHistoryAdmin(ModelAdmin):
     синку, і на `bulk_create`, і на ручній правці в адмінці — саме тому історія повна.
     """
 
-    list_display = ("changed_at", "product_link", "price_cell", "availability", "reason_badge",
-                    "run")
+    list_display = (
+        "changed_at",
+        "product_link",
+        "price_cell",
+        "availability",
+        "reason_badge",
+        "run",
+    )
     list_select_related = ("product",)
     list_filter = (
         ("product", AutocompleteSelectFilter),

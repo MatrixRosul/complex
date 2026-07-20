@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from django.core.exceptions import ImproperlyConfigured
 
-from .prod import *  # noqa: F403
+from .prod import *
 from .prod import INSTALLED_APPS, MIDDLEWARE, STORAGES, env
 
 # ---------------------------------------------------------------------------

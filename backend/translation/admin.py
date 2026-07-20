@@ -20,18 +20,15 @@
    для описів. Це найвищий ROI на годину роботи модератора — тому він бачить їх першими.
 
 ⚠️ ЗАЛЕЖНІСТЬ: `TranslationEntry.approve()` робить write-back у `*_ru` через
-   `translation/services/writeback.py`. Модуля ще НЕМАЄ. Тому дія «Схвалити» перевіряє його
-   наявність: є — публікує повністю; немає — схвалює запис у черзі (published_text,
-   статус, аудит) і ЧЕСНО каже, що вітрина (`*_ru`) оновиться після підключення write-back.
-   Мовчки «схвалити в нікуди» — гірше, ніж не схвалити.
+   `translation/services/writeback.py`, а «Перекласти заново» ставить `translate_pending_task`.
+   Обидва імпортуються ЗВЕРХУ, а не через importlib: якщо ім'я зникне — Django впаде на
+   старті, а не мовчки в проді під руками редактора.
 """
 
 from __future__ import annotations
 
-import importlib
-import importlib.util
-
 from django.contrib import admin, messages
+from django.db import transaction
 from django.db.models import Case, IntegerField, QuerySet, Value, When
 from django.http import HttpRequest
 from django.utils import timezone
@@ -47,6 +44,7 @@ from translation.models import (
     TranslationKind,
     TranslationStatus,
 )
+from translation.tasks import translate_pending_task
 
 STATUS_LABELS: dict[str, str] = {
     TranslationStatus.PENDING: "default",
@@ -66,24 +64,6 @@ DICTIONARY_KINDS = {
     TranslationKind.UNIT,
     TranslationKind.CATEGORY_NAME,
 }
-
-
-def _writeback_available() -> bool:
-    try:
-        return importlib.util.find_spec("translation.services.writeback") is not None
-    except (ImportError, ModuleNotFoundError, ValueError):
-        return False
-
-
-def _dispatch_task(dotted_path: str, **kwargs) -> bool:
-    module_path, _, task_name = dotted_path.rpartition(".")
-    try:
-        module = importlib.import_module(module_path)
-        task = getattr(module, task_name)
-    except (ImportError, AttributeError):
-        return False
-    task.delay(**kwargs)
-    return True
 
 
 class ModelNoteFilter(admin.SimpleListFilter):
@@ -270,7 +250,6 @@ class TranslationEntryAdmin(ModelAdmin):
 
     @admin.action(description="✅ Схвалити вибрані (опублікувати)")
     def approve_selected(self, request: HttpRequest, queryset: QuerySet) -> None:
-        writeback = _writeback_available()
         approved = 0
         empty = 0
 
@@ -280,40 +259,13 @@ class TranslationEntryAdmin(ModelAdmin):
                 empty += 1
                 continue
 
-            if writeback:
-                entry.approve(request.user)
-            else:
-                now = timezone.now()
-                entry.published_text = entry.target_text
-                entry.published_at = now
-                entry.approved_by = request.user
-                entry.approved_at = now
-                entry.status = TranslationStatus.APPROVED
-                entry.save(
-                    update_fields=[
-                        "published_text",
-                        "published_at",
-                        "approved_by",
-                        "approved_at",
-                        "status",
-                        "updated_at",
-                    ]
-                )
+            entry.approve(request.user)
             approved += 1
 
         if approved:
-            if writeback:
-                self.message_user(
-                    request, f"Схвалено й опубліковано: {approved}.", level=messages.SUCCESS
-                )
-            else:
-                self.message_user(
-                    request,
-                    f"Схвалено в черзі: {approved}. УВАГА: write-back у *_ru-колонки НЕ "
-                    "виконано — translation/services/writeback.py ще не підключено. "
-                    "Сайт покаже переклад після його появи (схвалення не втрачено).",
-                    level=messages.WARNING,
-                )
+            self.message_user(
+                request, f"Схвалено й опубліковано: {approved}.", level=messages.SUCCESS
+            )
         if empty:
             self.message_user(
                 request,
@@ -337,24 +289,25 @@ class TranslationEntryAdmin(ModelAdmin):
 
     @admin.action(description="🔄 Перекласти заново")
     def retranslate_selected(self, request: HttpRequest, queryset: QuerySet) -> None:
-        ids = list(queryset.values_list("pk", flat=True))
+        """
+        Повертає записи в чергу і будить прогін.
+
+        ⚡ `translate_pending_task` НЕ приймає список id — вона сама вибирає з БД усе, що
+           чекає (`_pending_qs`). Тому спершу COMMIT нових статусів, і лише потім задача:
+           інакше воркер прочитає рядки до коміту й не побачить нічого. Звідси on_commit.
+        """
         count = queryset.update(
             status=TranslationStatus.PENDING,
             validation_errors=[],
             updated_at=timezone.now(),
         )
-        queued = _dispatch_task("translation.tasks.translate_entries", entry_ids=ids)
-        if queued:
-            self.message_user(
-                request, f"Поставлено в чергу на переклад: {count}.", level=messages.SUCCESS
-            )
-        else:
-            self.message_user(
-                request,
-                f"Позначено «Очікує перекладу»: {count}. Задача перекладу (translation.tasks) "
-                "буде підключена наступним кроком — записи чекають у черзі.",
-                level=messages.WARNING,
-            )
+        transaction.on_commit(translate_pending_task.delay)
+        self.message_user(
+            request,
+            f"Повернуто в чергу: {count}. Прогін запущено — він перекладе всі записи "
+            "зі статусом «Очікує», не лише вибрані. Оновіть сторінку за кілька хвилин.",
+            level=messages.SUCCESS,
+        )
 
 
 @admin.register(GlossaryTerm)

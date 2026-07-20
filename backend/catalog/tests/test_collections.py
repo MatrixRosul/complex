@@ -363,6 +363,8 @@ def test_cache_is_invalidated_on_product_save(category: Category, brand: Brand) 
     """
     assert get_collections("uk")["featured"] == []  # нагріваємо кеш порожнім результатом
 
-    product = _product(category, brand, "HIT", is_featured=True)  # .save() → post_save → інвалідація
+    product = _product(
+        category, brand, "HIT", is_featured=True
+    )  # .save() → post_save → інвалідація
 
     assert _ids(get_collections("uk")["featured"]) == [product.pk]

@@ -19,6 +19,7 @@ import socket
 from datetime import timedelta
 from decimal import Decimal
 from io import BytesIO
+from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
 import httpx
@@ -46,6 +47,9 @@ from sync.services import (
     reap_stale_runs as _reap_stale_runs,
 )
 
+if TYPE_CHECKING:
+    from PIL import Image
+
 log = logging.getLogger(__name__)
 
 # --- Фото -------------------------------------------------------------------
@@ -58,6 +62,63 @@ MAX_IMAGE_ATTEMPTS = 5
 #: Деривативи: 300 / 700 / 1600 px. Імена — ЛАТИНИЦЕЮ: кирилиця в шляху = товар без фото
 #: у фіді Hotline, тобто товар, якого ніхто не побачить.
 DERIVATIVES = (("file_thumb", 300, "sm"), ("file_card", 700, "md"), ("file_large", 1600, "lg"))
+#: Режими, у яких альфа-канал уже є або мається на увазі — усі вони йдуть у RGBA.
+_ALPHA_MODES = frozenset({"RGBA", "RGBa", "LA", "La", "PA"})
+
+
+def has_alpha(source_image: Image.Image) -> bool:
+    """Чи є в зображенні прозорість (окремим каналом або через `transparency` у палітрі)."""
+    return source_image.mode in _ALPHA_MODES or "transparency" in source_image.info
+
+
+def prepare_for_derivatives(source_image: Image.Image) -> Image.Image:
+    """Привести зображення до режиму, придатного для WebP, ЗБЕРІГАЮЧИ прозорість.
+
+    ⚠️ Тут був баг «чорний фон». Раніше стояло просте `source_image.convert("RGB")` — спадок
+    JPEG-пайплайна, який до WebP не має жодного стосунку. Pillow при RGBA→RGB альфу не
+    композитить, а просто ВІДКИДАЄ: у більшості PNG під прозорими пікселями лежить RGB
+    (0, 0, 0), тому весь прозорий фон ставав чорним прямокутником навколо товару.
+
+    WebP підтримує альфу повністю, тому прозорість лишаємо як є: фронтенд кладе фото на
+    `bg-card`, і воно коректно лягає і в світлій, і в темній темі. Композитити на білому
+    НЕ можна — у темній темі це була б біла плитка.
+
+    Заодно застосовуємо EXIF-орієнтацію: без цього фото з телефона (Orientation=6) лежить
+    на боці, бо самі теги при перезбиранні в WebP не переносяться.
+    """
+    from PIL import ImageOps
+
+    prepared = ImageOps.exif_transpose(source_image) or source_image
+    mode = prepared.mode
+    if mode == "P":
+        # WebP не приймає палітру взагалі: з прозорістю → RGBA, без неї → RGB.
+        return prepared.convert("RGBA" if "transparency" in prepared.info else "RGB")
+    if mode in _ALPHA_MODES:
+        return prepared if mode == "RGBA" else prepared.convert("RGBA")
+    if mode == "RGB":
+        return prepared
+    return prepared.convert("RGB")  # L, CMYK, I;16, F, "1" — усе без альфи
+
+
+def write_derivatives(image: ProductImage, source_image: Image.Image, stem: str) -> Image.Image:
+    """Зібрати три WebP-деривативи і покласти їх у поля `image` (БЕЗ `save()` моделі).
+
+    Спільна точка для синку і для management-команди `regenerate_image_derivatives`:
+    дублювати цю логіку не можна — саме через розʼїзд двох копій такі баги й живуть довго.
+
+    Повертає нормалізоване зображення — з нього ж треба брати `.size` для `width`/`height`,
+    бо EXIF-поворот міняє сторони місцями.
+    """
+    prepared = prepare_for_derivatives(source_image)
+    for field_name, size, suffix in DERIVATIVES:
+        derivative = prepared.copy()
+        derivative.thumbnail((size, size))
+        out = BytesIO()
+        derivative.save(out, format="WEBP", quality=82, method=4)
+        getattr(image, field_name).save(
+            f"{stem}_{suffix}.webp", ContentFile(out.getvalue()), save=False
+        )
+    return prepared
 
 
 # ---------------------------------------------------------------------------
@@ -332,17 +393,9 @@ def download_product_image(
         f"{stem}.{(source_image.format or 'jpg').lower()}", ContentFile(payload), save=False
     )
 
-    rgb = source_image.convert("RGB")
-    for field_name, size, suffix in DERIVATIVES:
-        derivative = rgb.copy()
-        derivative.thumbnail((size, size))
-        out = BytesIO()
-        derivative.save(out, format="WEBP", quality=82, method=4)
-        getattr(image, field_name).save(
-            f"{stem}_{suffix}.webp", ContentFile(out.getvalue()), save=False
-        )
+    prepared = write_derivatives(image, source_image, stem)
 
-    image.width, image.height = source_image.size
+    image.width, image.height = prepared.size
     image.content_hash = content_hash
     image.etag = etag[:255]
     image.downloaded_at = timezone.now()

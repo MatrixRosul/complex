@@ -119,9 +119,27 @@ class Category(SEOMixin, TimeStampedModel):
     description = models.TextField("Опис", blank=True)  # [tr]
 
     icon = models.FileField(
-        "Міні-емблема", upload_to="categories/icons/", blank=True, validators=[validate_icon]
+        "Міні-емблема",
+        upload_to="categories/icons/",
+        blank=True,
+        validators=[validate_icon],
+        help_text=(
+            "Маленький значок біля назви групи в меню каталогу. Показується в круглій "
+            "рамці, тому картинка має бути КВАДРАТНА (наприклад 64×64) і на ПРОЗОРОМУ фоні — "
+            "інакше по кутах буде видно білий квадрат. Формати: SVG (найкраще), PNG або WebP. "
+            "Розмір файла — до 64 КБ: емблеми всіх категорій вантажаться разом."
+        ),
     )  # мегаменю (INPUTS §4)
-    image = models.ImageField("Плитка", upload_to="categories/tiles/", blank=True)
+    image = models.ImageField(
+        "Плитка",
+        upload_to="categories/tiles/",
+        blank=True,
+        help_text=(
+            "Велике горизонтальне фото групи для плиток на головній сторінці. "
+            "Пропорції приблизно 3:2 (наприклад 900×600), формат JPG, PNG або WebP. "
+            "Це НЕ значок у меню — для меню є «Міні-емблема» вище."
+        ),
+    )
 
     is_active = models.BooleanField("Активна", default=True, db_index=True)
     show_in_megamenu = models.BooleanField("Показувати в мегаменю", default=True)

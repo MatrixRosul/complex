@@ -490,7 +490,8 @@ def test_renamed_in_sheet_keeps_site_name_but_reports_the_drift(
 
     # Замовник перейменував рядок у прайсі (той самий артикул).
     run = sync_rows(
-        source, [row(sku="A1", name="Витяжка вбудована ELICA ERA C WH/A/52", price="100,00", qty="1")]
+        source,
+        [row(sku="A1", name="Витяжка вбудована ELICA ERA C WH/A/52", price="100,00", qty="1")],
     )
 
     # 1. Назва на сайті НЕ змінилась — ручні правки в безпеці.

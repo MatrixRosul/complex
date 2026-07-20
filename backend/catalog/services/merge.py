@@ -39,7 +39,9 @@ class MergeError(ValueError):
     """Злиття неможливе (сам у себе, різні атрибути тощо)."""
 
 
-def _merged_aliases(dst_aliases: list[str], dst_name: str, src_name: str, src_aliases: list[str]) -> list[str]:
+def _merged_aliases(
+    dst_aliases: list[str], dst_name: str, src_name: str, src_aliases: list[str]
+) -> list[str]:
     """Синоніми переможця = його власні + ім'я та синоніми дубля (без власного імені)."""
     merged = {*dst_aliases, src_name, *src_aliases}
     merged.discard(dst_name)

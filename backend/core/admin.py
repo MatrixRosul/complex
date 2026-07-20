@@ -177,9 +177,7 @@ class SiteSettingsAdmin(ModelAdmin, TabbedTranslationAdmin):
     ) -> HttpResponse:
         """Списку з одного рядка не існує — одразу відкриваємо сам рядок."""
         solo = SiteSettings.get_solo()
-        return HttpResponseRedirect(
-            reverse("admin:core_sitesettings_change", args=[solo.pk])
-        )
+        return HttpResponseRedirect(reverse("admin:core_sitesettings_change", args=[solo.pk]))
 
     def save_model(self, request: HttpRequest, obj: SiteSettings, form: Any, change: bool) -> None:
         # SiteSettings.save() читає _changed_by_id для аудиту UsdRateChange.
@@ -239,9 +237,7 @@ class SiteSettingsAdmin(ModelAdmin, TabbedTranslationAdmin):
             f"округлення: {solo.get_price_rounding_display()}). "
             "Потрібен запущений Celery-воркер черги «sync».",
         )
-        return HttpResponseRedirect(
-            reverse("admin:core_sitesettings_change", args=[object_id])
-        )
+        return HttpResponseRedirect(reverse("admin:core_sitesettings_change", args=[object_id]))
 
 
 @admin.register(WorkingHours)

@@ -98,7 +98,9 @@ def alert(message: str, **context: object) -> None:
 
         text = f"🔴 <b>Платежі</b>\n\n{escape(message)}"
         if context:
-            details = "\n".join(f"{escape(k)}: <code>{escape(v)}</code>" for k, v in context.items())
+            details = "\n".join(
+                f"{escape(k)}: <code>{escape(v)}</code>" for k, v in context.items()
+            )
             text = f"{text}\n\n{details}"
 
         send_telegram_alert.delay(text)

@@ -9,13 +9,11 @@
 Артефакти — ЖУРНАЛ (readonly). Правити згенерований XML з адмінки безглуздо: наступна
 генерація перезапише файл.
 
-⚠️ Кнопка «Згенерувати фід зараз» — поки заглушка (feeds.tasks ще немає). Щойно задача
-   з'явиться — кнопка почне запускати її без зміни коду (див. _dispatch_task).
+⚡ Кнопка «Згенерувати фід зараз» ставить `feeds.tasks.generate_hotline_feed` — задача
+   імпортується зверху, а не по dotted-path: помилка в імені має ламати старт, а не кнопку.
 """
 
 from __future__ import annotations
-
-import importlib
 
 from django.contrib import admin, messages
 from django.http import HttpRequest, HttpResponse
@@ -28,19 +26,8 @@ from unfold.decorators import action, display
 from unfold.enums import ActionVariant
 
 from feeds.models import FeedArtifact, HotlineCategory
-
-STUB_MESSAGE = "Задача генерації фіда буде підключена наступним кроком (feeds.tasks)."
-
-
-def _dispatch_task(dotted_path: str, **kwargs) -> bool:
-    module_path, _, task_name = dotted_path.rpartition(".")
-    try:
-        module = importlib.import_module(module_path)
-        task = getattr(module, task_name)
-    except (ImportError, AttributeError):
-        return False
-    task.delay(**kwargs)
-    return True
+from feeds.tasks import generate_hotline_feed
+from sync.models import SyncRun
 
 
 @admin.register(FeedArtifact)
@@ -150,19 +137,12 @@ class FeedArtifactAdmin(ModelAdmin):
         variant=ActionVariant.PRIMARY,
     )
     def generate_now(self, request: HttpRequest) -> HttpResponse:
-        queued = _dispatch_task("feeds.tasks.generate_hotline_feed")
-        if queued:
-            self.message_user(
-                request,
-                "Генерацію фіда поставлено в чергу. Оновіть сторінку за хвилину.",
-                level=messages.SUCCESS,
-            )
-        else:
-            self.message_user(
-                request,
-                f"Фід НЕ ЗГЕНЕРОВАНО: {STUB_MESSAGE} Поточний артефакт не змінено.",
-                level=messages.WARNING,
-            )
+        generate_hotline_feed.delay(trigger=SyncRun.Trigger.MANUAL, user_id=request.user.pk)
+        self.message_user(
+            request,
+            "Генерацію фіда поставлено в чергу. Оновіть сторінку за хвилину.",
+            level=messages.SUCCESS,
+        )
         return redirect(reverse("admin:feeds_feedartifact_changelist"))
 
 

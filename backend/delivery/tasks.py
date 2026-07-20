@@ -165,9 +165,7 @@ def sync_np_refs(
         try:
             areas = np.fetch_all("Address", "getAreas")
             cities = np.fetch_all("Address", "getCities")
-            settlements = np.fetch_all(
-                "Address", "getSettlements", limit=NP_SETTLEMENTS_PAGE_LIMIT
-            )
+            settlements = np.fetch_all("Address", "getSettlements", limit=NP_SETTLEMENTS_PAGE_LIMIT)
             warehouses = np.fetch_all("Address", "getWarehouses")
         except (NovaPoshtaUnavailable, NovaPoshtaError) as exc:
             run.status = SyncRun.Status.FAILED

@@ -480,7 +480,9 @@ def catalog_products_collections_compat(
     return products_collections(request, lang, limit)
 
 
-@router.get("/catalog/products/featured", response=list[ProductListItemOut], include_in_schema=False)
+@router.get(
+    "/catalog/products/featured", response=list[ProductListItemOut], include_in_schema=False
+)
 def catalog_products_featured_compat(
     request: HttpRequest, lang: str = "uk", limit: int = collections.DEFAULT_LIMIT
 ):

@@ -32,11 +32,25 @@ pytestmark = pytest.mark.django_db
 OLD = "https://cdn.example.com/old.jpg"
 NEW = "https://cdn.example.com/new.jpg"
 SECOND = "https://cdn.example.com/second.jpg"
+TRANSPARENT = "https://cdn.example.com/cutout.png"
 
 
 def _png(color: tuple[int, int, int]) -> bytes:
     buf = BytesIO()
     Image.new("RGB", (24, 24), color).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def _png_rgba() -> bytes:
+    """Товар «у вирізі»: прозорий фон, а під альфою — ЧОРНІ пікселі.
+
+    Саме так виглядає більшість PNG від постачальників, і саме тому `convert("RGB")`
+    (він альфу не композитить, а відкидає) робив із прозорого фону чорний прямокутник.
+    """
+    buf = BytesIO()
+    img = Image.new("RGBA", (24, 24), (0, 0, 0, 0))
+    img.paste((200, 30, 30, 255), (8, 8, 16, 16))
+    img.save(buf, format="PNG")
     return buf.getvalue()
 
 
@@ -50,7 +64,7 @@ def cdn(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         url = str(request.url)
         if url in dead:
             return httpx.Response(404)
-        body = _png(palette.get(url, (99, 99, 99)))
+        body = _png_rgba() if url == TRANSPARENT else _png(palette.get(url, (99, 99, 99)))
         return httpx.Response(200, content=body, headers={"content-type": "image/png"})
 
     real_client = httpx.Client
@@ -190,6 +204,112 @@ def test_purge_deletes_files_from_storage_outside_transaction(
     for callback in callbacks:  # COMMIT
         callback()
     assert not any(default_storage.exists(p) for p in paths)
+
+
+# ---------------------------------------------------------------------------
+# ⚡ Регресія: прозорий фон не має ставати чорним
+# ---------------------------------------------------------------------------
+
+
+def test_transparent_png_keeps_alpha_in_all_derivatives(
+    source: Any, site_settings: Any, catalog_refs: Any, cdn: dict[str, Any]
+) -> None:
+    """Прозорий PNG → усі три WebP лишаються з альфою, а не з чорним фоном.
+
+    Скарга замовника звучала як «фото на чорному квадраті»: `convert("RGB")` перед
+    збиранням деривативів відкидав альфу, оголюючи чорні пікселі під нею. WebP альфу
+    підтримує, тому прозорість зберігається — і товар лягає на фон картки в обох темах.
+    """
+    run = sync(source, client_with(TRANSPARENT))
+    drain(run)
+
+    image = ProductImage.objects.get(source_url_hash=url_hash(TRANSPARENT))
+    for field in ("file_large", "file_card", "file_thumb"):
+        with getattr(image, field).open("rb") as fh:
+            derivative = Image.open(BytesIO(fh.read()))
+            derivative.load()
+        assert derivative.mode == "RGBA", field
+        assert derivative.getpixel((0, 0))[3] == 0, f"{field}: кут фото має лишитись прозорим"
+        # WebP тут lossy, тому колір звіряємо з допуском: важливо, що товар лишився
+        # червоним і НЕПРОЗОРИМ, а не точні значення каналів.
+        red, green, blue, alpha = derivative.getpixel((12, 12))
+        assert alpha == 255, f"{field}: сам товар не має бути прозорим"
+        assert red > 150 and green < 80 and blue < 80, f"{field}: товар на місці й того ж кольору"
+
+
+def test_regenerate_command_heals_already_blackened_derivatives(
+    source: Any, site_settings: Any, catalog_refs: Any, cdn: dict[str, Any]
+) -> None:
+    """`regenerate_image_derivatives` лікує те, що вже лежить у сховищі почорнілим.
+
+    Фікс коду сам собою нічого не виправляє: дедуп у `download_product_image` іде по
+    `content_hash` вихідних байтів, тому наступний синк на тому ж URL поверне "unchanged"
+    і чорні webp лишаться назавжди. Ось цей сценарій тут і відтворено — включно з тим,
+    що ОРИГІНАЛ не постраждав і альфу можна відновити саме з нього.
+    """
+    from django.core.files.base import ContentFile
+    from django.core.management import call_command
+
+    run = sync(source, client_with(TRANSPARENT))
+    drain(run)
+    image = ProductImage.objects.get(source_url_hash=url_hash(TRANSPARENT))
+
+    # Відтворюємо стан «до фіксу»: деривативи зібрані старим convert("RGB").
+    with image.file.open("rb") as fh:
+        original = Image.open(BytesIO(fh.read()))
+        original.load()
+    for field in ("file_large", "file_card", "file_thumb"):
+        out = BytesIO()
+        original.convert("RGB").save(out, format="WEBP", quality=82, method=4)
+        getattr(image, field).save(f"broken_{field}.webp", ContentFile(out.getvalue()), save=False)
+    image.save()
+
+    with image.file_card.open("rb") as fh:
+        broken = Image.open(BytesIO(fh.read()))
+        broken.load()
+    assert broken.mode == "RGB"
+    assert broken.getpixel((0, 0)) == (0, 0, 0)  # той самий чорний фон, на який скаржаться
+
+    call_command("regenerate_image_derivatives", "--only-transparent", verbosity=0)
+
+    image.refresh_from_db()
+    for field in ("file_large", "file_card", "file_thumb"):
+        with getattr(image, field).open("rb") as fh:
+            healed = Image.open(BytesIO(fh.read()))
+            healed.load()
+        assert healed.mode == "RGBA", field
+        assert healed.getpixel((0, 0))[3] == 0, f"{field}: прозорість відновлено"
+
+
+def test_regenerate_command_dry_run_changes_nothing(
+    source: Any, site_settings: Any, catalog_refs: Any, cdn: dict[str, Any]
+) -> None:
+    """--dry-run саме сухий: жодного запису у сховище."""
+    from django.core.management import call_command
+
+    run = sync(source, client_with(TRANSPARENT))
+    drain(run)
+    image = ProductImage.objects.get(source_url_hash=url_hash(TRANSPARENT))
+    before = image.file_card.name
+
+    call_command("regenerate_image_derivatives", "--dry-run", verbosity=0)
+
+    image.refresh_from_db()
+    assert image.file_card.name == before
+
+
+def test_opaque_photo_stays_rgb(
+    source: Any, site_settings: Any, catalog_refs: Any, cdn: dict[str, Any]
+) -> None:
+    """Звичайне фото без прозорості альфи не набуває: зайвий канал = більший файл дарма."""
+    run = sync(source, client_with(NEW))
+    drain(run)
+
+    image = ProductImage.objects.get(source_url_hash=url_hash(NEW))
+    with image.file_card.open("rb") as fh:
+        derivative = Image.open(BytesIO(fh.read()))
+        derivative.load()
+    assert derivative.mode == "RGB"
 
 
 # ---------------------------------------------------------------------------

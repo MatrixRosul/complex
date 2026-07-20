@@ -23,7 +23,9 @@ log = logging.getLogger(__name__)
 __all__ = ["affected_categories", "affected_products", "set_hotline_for_category"]
 
 
-def affected_categories(category: Category, *, include_descendants: bool = True) -> QuerySet[Category]:
+def affected_categories(
+    category: Category, *, include_descendants: bool = True
+) -> QuerySet[Category]:
     if not include_descendants:
         return Category.objects.filter(pk=category.pk)
     return category.descendants(include_self=True)

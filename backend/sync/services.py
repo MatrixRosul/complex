@@ -1931,9 +1931,7 @@ def _enqueue_denorm(run: SyncRun) -> int:
     from sync.tasks import rebuild_product_denorm
 
     ids = list(
-        Product.objects.filter(last_seen_run=run.id, denorm_dirty=True).values_list(
-            "id", flat=True
-        )
+        Product.objects.filter(last_seen_run=run.id, denorm_dirty=True).values_list("id", flat=True)
     )
     if not ids:
         return 0

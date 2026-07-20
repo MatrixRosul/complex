@@ -28,14 +28,38 @@ pytestmark = pytest.mark.django_db
 # Порядок як в адмінці: «Управління» перед монтажними розмірами. За алфавітом було б навпаки —
 # «Висота для монтажу» < «Глибина…» < «Управління».
 SPECS = [
-    {"g": "Загальні характеристики", "gs": 60, "code": "upravlinnia", "n": "Управління",
-     "u": "", "v": "сенсорне"},
-    {"g": "Загальні характеристики", "gs": 60, "code": "vysota_montazh", "n": "Висота для монтажу",
-     "u": "мм", "v": "590"},
-    {"g": "Загальні характеристики", "gs": 60, "code": "shyryna_montazh", "n": "Ширина для монтажу",
-     "u": "мм", "v": "560"},
-    {"g": "Загальні характеристики", "gs": 60, "code": "hlybyna_montazh", "n": "Глибина для монтажу",
-     "u": "мм", "v": "550"},
+    {
+        "g": "Загальні характеристики",
+        "gs": 60,
+        "code": "upravlinnia",
+        "n": "Управління",
+        "u": "",
+        "v": "сенсорне",
+    },
+    {
+        "g": "Загальні характеристики",
+        "gs": 60,
+        "code": "vysota_montazh",
+        "n": "Висота для монтажу",
+        "u": "мм",
+        "v": "590",
+    },
+    {
+        "g": "Загальні характеристики",
+        "gs": 60,
+        "code": "shyryna_montazh",
+        "n": "Ширина для монтажу",
+        "u": "мм",
+        "v": "560",
+    },
+    {
+        "g": "Загальні характеристики",
+        "gs": 60,
+        "code": "hlybyna_montazh",
+        "n": "Глибина для монтажу",
+        "u": "мм",
+        "v": "550",
+    },
 ]
 
 
@@ -66,13 +90,16 @@ def test_order_follows_specs_json_not_alphabet(product: Product) -> None:
 
 def test_explicit_sort_order_wins(product: Product) -> None:
     """А якщо `s` проставлений (замовник змінив порядок в адмінці) — виграє він."""
-    specs = [dict(row, s=order) for row, order in zip(SPECS, (40, 10, 20, 30))]
+    specs = [dict(row, s=order) for row, order in zip(SPECS, (40, 10, 20, 30), strict=True)]
     product.specs_json = product.specs_json_uk = specs
     product.save(update_fields=["specs_json", "specs_json_uk"])
 
     rows = grouped_specs(product, "uk")[0]["rows"]
     assert [r["name"] for r in rows] == [
-        "Висота для монтажу", "Ширина для монтажу", "Глибина для монтажу", "Управління",
+        "Висота для монтажу",
+        "Ширина для монтажу",
+        "Глибина для монтажу",
+        "Управління",
     ]
 
 
@@ -89,10 +116,16 @@ def test_internal_position_key_does_not_leak(product: Product) -> None:
 
 @pytest.fixture
 def attribute(product: Product) -> Attribute:
-    group = AttributeGroup.objects.create(name="Загальні характеристики", code="general",
-                                          sort_order=60)
-    attr = Attribute.objects.create(name="Управління", code="upravlinnia", group=group,
-                                    value_type=Attribute.ValueType.STRING, sort_order=100)
+    group = AttributeGroup.objects.create(
+        name="Загальні характеристики", code="general", sort_order=60
+    )
+    attr = Attribute.objects.create(
+        name="Управління",
+        code="upravlinnia",
+        group=group,
+        value_type=Attribute.ValueType.STRING,
+        sort_order=100,
+    )
     ProductAttributeValue.objects.create(product=product, attribute=attr, value_string="сенсорне")
     Product.objects.filter(pk=product.pk).update(denorm_dirty=False)
     return attr

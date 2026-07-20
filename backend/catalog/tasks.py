@@ -77,9 +77,7 @@ def recalc_prices(
     rate: Decimal = solo.usd_rate
     rule: str = solo.price_rounding
 
-    scope_filter = (
-        "AND p.source_currency = 'USD'" if scope == "usd" else ""
-    )
+    scope_filter = "AND p.source_currency = 'USD'" if scope == "usd" else ""
     sql = _RECALC_SQL.format(scope_filter=scope_filter)
 
     with price_reason("recalc"), connection.cursor() as cur:

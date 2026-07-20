@@ -21,12 +21,29 @@ CSRF_TRUSTED_ORIGINS = [
 # Локально ліміт спроб входу тільки заважає.
 AXES_ENABLED = env.bool("AXES_ENABLED", default=False)
 
+
 # --- django-debug-toolbar ---
+def _show_toolbar(request) -> bool:
+    """Панель — тільки при ЖИВОМУ DEBUG, а не при тому, який був на момент імпорту settings.
+
+    ⚠️ Тут був `lambda request: DEBUG`, і це ламало КОЖЕН тест, який рендерить сторінку
+       адмінки. Тест-раннер вимикає DEBUG (`settings.DEBUG = False`) вже після імпорту
+       модуля, тому:
+         · `config/urls.py` НЕ підключав `__debug__/` (там перевірка в момент імпорту),
+         · а замикання лямбди тримало старе `True`, тож middleware все одно вставляв панель
+       → рендер падав з `NoReverseMatch: djdt:render_panel`, і виглядало це як «зламана
+       адмінка», хоча ламався лише тулбар. Читаємо DEBUG з `django.conf.settings` наживо.
+    """
+    from django.conf import settings as active_settings
+
+    return bool(active_settings.DEBUG)
+
+
 if DEBUG:
     INSTALLED_APPS += ["debug_toolbar"]
     MIDDLEWARE.insert(0, "debug_toolbar.middleware.DebugToolbarMiddleware")
     INTERNAL_IPS = ["127.0.0.1", "::1"]
-    DEBUG_TOOLBAR_CONFIG = {"SHOW_TOOLBAR_CALLBACK": lambda request: DEBUG}
+    DEBUG_TOOLBAR_CONFIG = {"SHOW_TOOLBAR_CALLBACK": _show_toolbar}
 
 # Пошта — у консоль.
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
