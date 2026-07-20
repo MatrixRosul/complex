@@ -41,5 +41,7 @@ api.add_router("/delivery/", "delivery.api.router")
 api.add_router("/payments/", "payments.api.router")
 api.add_router("/assistant/", "assistant.api.router")
 
-# TODO: orders/api.py ще не написаний — без нього не можна оформити замовлення (checkout).
-# api.add_router("/orders/", "orders.api.router")
+api.add_router("/orders", "orders.api.router")
+# ⚠️ БЕЗ слеша на кінці: роутер оголошує шляхи "" (POST /orders) і "/{uuid:token}".
+#    З "/orders/" оформлення жило б на /api/v1/orders/ і фронтовий POST /api/v1/orders
+#    ловив би 404 через APPEND_SLASH, який на POST не редіректить.

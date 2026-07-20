@@ -79,10 +79,31 @@ class InstallmentsNotAllowed(PaymentError):
 def alert(message: str, **context: object) -> None:
     """Критична подія, яку МАЄ побачити людина.
 
-    Поки в `core` немає єдиного каналу алертів (Telegram, ADR-019) — це `log.critical`,
-    який підхоплює Sentry. Точка розширення рівно одна.
+    Два канали, і жоден не скасовує інший: `log.critical` (його підхоплює Sentry, це
+    слід для розбору постфактум) + Telegram (ADR-019 — менеджер і так у телефоні).
+
+    ⚠️ Telegram шлемо ЗАДАЧЕЮ, а не тут-таки. `alert()` викликається з обробки вебхука
+       LiqPay і з транзакцій проведення платежу; синхронний HTTP до Telegram тримав би
+       відкриту транзакцію й міг би завалити вебхук таймаутом — а вебхук, який не
+       відповів 200, LiqPay ретраїть.
+
+    ⚠️ І постановка в чергу теж не має права зламати виклик: якщо брокер лежить,
+       алерт лишається в лозі, а платіж проводиться далі.
     """
     log.critical("PAYMENTS ALERT: %s | %s", message, context)
+
+    try:
+        from core.alerts import escape
+        from core.tasks import send_telegram_alert
+
+        text = f"🔴 <b>Платежі</b>\n\n{escape(message)}"
+        if context:
+            details = "\n".join(f"{escape(k)}: <code>{escape(v)}</code>" for k, v in context.items())
+            text = f"{text}\n\n{details}"
+
+        send_telegram_alert.delay(text)
+    except Exception:
+        log.exception("Не вдалось поставити Telegram-алерт у чергу")
 
 
 # ---------------------------------------------------------------------------
