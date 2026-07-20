@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { formatPriceWithCurrency } from "@/lib/format";
 import { useLocale, useT } from "@/i18n/provider";
-import { localePath, localeToApiLang } from "@/i18n/config";
+import { localePath } from "@/i18n/config";
 
 /** Тонка форма підказки — рівно те, що віддає /api/suggest. */
 type Suggestion = {
@@ -50,15 +50,16 @@ export function SearchBar({
 
   // ── Дебаунс + запит підказок ────────────────────────────────────────────
   useEffect(() => {
-    if (query.length < MIN_CHARS) {
-      setItems([]);
-      setLoading(false);
-      return;
-    }
+    // Закороткий запит: НЕ чистимо стан тут — синхронний setState в тілі ефекту дає
+    // каскадний ререндер (react-hooks/set-state-in-effect). Ховання підказок і так
+    // похідне: дропдаун нижче гейтиться на `query.length >= MIN_CHARS` при рендері.
+    if (query.length < MIN_CHARS) return;
 
-    setLoading(true);
     const ctrl = new AbortController();
     const timer = setTimeout(async () => {
+      // setLoading всередині колбека таймера — це вже не «синхронно в ефекті», і
+      // спінер чесніший: з'являється, коли запит СПРАВДІ пішов, а не під час дебаунсу.
+      setLoading(true);
       try {
         const res = await fetch(
           `/api/suggest?q=${encodeURIComponent(query)}&locale=${locale}`,

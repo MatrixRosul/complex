@@ -32,7 +32,11 @@ export function Price({
     <div className={cn("flex flex-col", className)}>
       <div
         className={cn(
-          "price text-sm leading-5 text-price-old line-through",
+          "price text-sm leading-5",
+          // Перекреслення й колір старої ціни — ТІЛЬКИ коли знижка реально є.
+          // Інакше line-through малює штрих по порожньому рядку — виглядає як «прочерк»
+          // над ціною на кожному товарі без знижки.
+          hasDiscount && "text-price-old line-through",
           reserveOldPriceSpace && "min-h-5",
         )}
       >
