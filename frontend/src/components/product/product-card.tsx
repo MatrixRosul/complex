@@ -48,7 +48,8 @@ export function ProductCard({
   const locale = useLocale();
   const hydrated = useHydrated();
 
-  const addToCart = useCartStore((s) => s.add);
+  const addAndOpenCart = useCartStore((s) => s.addAndOpen);
+  const openCart = useCartStore((s) => s.setOpen);
   const inCart = useCartStore((s) => s.lines.some((l) => l.id === product.id));
 
   const toggleWish = useWishlistStore((s) => s.toggle);
@@ -150,14 +151,28 @@ export function ProductCard({
           variant={isOut ? "secondary" : "default"}
           size="lg"
           className="order-2 w-full sm:order-1 sm:w-auto"
+          /**
+           * ⚠️ Клік відкриває панель кошика, а не показує тост.
+           *
+           * Тост підтверджував додавання, але лишав людину в сітці: щоб оформити, треба
+           * було знайти 🛒 в шапці й перейти на /cart. Замовник (Артур) на це й вказав —
+           * у побутовій техніці кошик з 5 позицій майже не збирають, типовий чек — одна
+           * машинка. Тому дія за замовчуванням — показати кошик, а не натякнути на нього.
+           *
+           * Товар уже в кошику → просто відкриваємо панель: другий клік по «У кошику»
+           * мовчки додавав ще одну одиницю, і люди про це дізнавались уже на чекауті.
+           */
           onClick={(e) => {
             stop(e);
             if (isOut) {
               toast(t("product.notifyWhenAvailable"), { description: product.name });
               return;
             }
-            addToCart(product.id);
-            toast.success(t("cart.title"), { description: product.name });
+            if (inCart) {
+              openCart(true);
+              return;
+            }
+            addAndOpenCart(product.id);
           }}
         >
           {isOut

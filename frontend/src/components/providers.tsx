@@ -2,6 +2,8 @@
 
 import { ThemeProvider } from "next-themes";
 import { FoxWidget } from "@/components/assistant/fox-widget";
+import { CartDrawer } from "@/components/cart/cart-drawer";
+import { CatalogMenuProvider } from "@/components/layout/catalog-menu";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { I18nProvider } from "@/i18n/provider";
@@ -27,7 +29,13 @@ export function Providers({
         disableTransitionOnChange
       >
         <TooltipProvider>
-          {children}
+          {/* Кнопка «Каталог» живе в хедері (layout), а розгорнутий список — на
+              головній (page). Спільний стан мусить бути вище за обох. */}
+          <CatalogMenuProvider>{children}</CatalogMenuProvider>
+          {/* Панель кошика — глобальна: «Купити» тиснуть з картки в сітці, зі сторінки
+              товару і з порівняння, а відкриватись вона мусить скрізь однаково.
+              Вміст монтується лише коли вона відкрита — див. cart-drawer.tsx. */}
+          <CartDrawer />
           <FoxWidget />
           {/* offset — щоб тости стакались НАД лисичкою, а не поверх неї:
               обидва живуть у правому нижньому куті. */}

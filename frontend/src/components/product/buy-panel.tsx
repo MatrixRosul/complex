@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Heart, Scale } from "lucide-react";
+import { Heart, Scale, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -33,7 +33,9 @@ export function BuyPanel({ product }: { product: ProductDetail }) {
   const locale = useLocale();
   const hydrated = useHydrated();
 
-  const addToCart = useCartStore((s) => s.add);
+  const addAndOpenCart = useCartStore((s) => s.addAndOpen);
+  const openCart = useCartStore((s) => s.setOpen);
+  const removeFromCart = useCartStore((s) => s.remove);
   const inCart = useCartStore((s) => s.lines.some((l) => l.id === product.id));
 
   const toggleWish = useWishlistStore((s) => s.toggle);
@@ -108,13 +110,17 @@ export function BuyPanel({ product }: { product: ProductDetail }) {
           size="xl"
           variant={isOut ? "secondary" : "default"}
           className="w-full"
+          /** Та сама логіка, що в картці товару: одразу показуємо кошик, а не тост. */
           onClick={() => {
             if (isOut) {
               toast(t("product.notifyWhenAvailable"), { description: product.name });
               return;
             }
-            addToCart(product.id);
-            toast.success(t("cart.title"), { description: product.name });
+            if (inCart) {
+              openCart(true);
+              return;
+            }
+            addAndOpenCart(product.id);
           }}
         >
           {isOut
@@ -139,13 +145,32 @@ export function BuyPanel({ product }: { product: ProductDetail }) {
           </Button>
         )}
 
+        {/* ⚠️ Зворотна дія до «Купити». Прибрати товар з кошика можна було ЛИШЕ зі
+            сторінки кошика: людина, що передумала прямо на картці товару, мусила йти
+            в /cart шукати там цей самий товар. Кнопка з'являється тільки коли є що
+            прибирати, тож у звичайному стані панель не роздувається. */}
         {hydrated && inCart && (
-          <Link
-            href={localePath(locale, "/cart")}
-            className="text-center text-sm text-primary hover:underline"
-          >
-            {t("product.goToCart")}
-          </Link>
+          <div className="flex items-center justify-between gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground"
+              onClick={() => {
+                removeFromCart(product.id);
+                toast.success(t("cart.removed"), { description: product.name });
+              }}
+            >
+              <Trash2 className="size-4" />
+              {t("product.removeFromCart")}
+            </Button>
+
+            <Link
+              href={localePath(locale, "/cart")}
+              className="text-sm text-primary hover:underline"
+            >
+              {t("product.goToCart")}
+            </Link>
+          </div>
         )}
       </div>
 

@@ -26,6 +26,16 @@ const MAX_QTY = 99;
 
 type CartState = {
   lines: CartLine[];
+  /**
+   * Чи відкрита панель кошика (CartDrawer).
+   *
+   * ⚠️ Живе в цьому ж сторі, але НЕ потрапляє в localStorage (див. partialize нижче):
+   * інакше кошик відкривався б сам при кожному заході на сайт.
+   */
+  isOpen: boolean;
+  setOpen: (open: boolean) => void;
+  /** Додати й одразу показати кошик — сценарій кнопки «Купити». */
+  addAndOpen: (id: number, qty?: number) => void;
   add: (id: number, qty?: number) => void;
   setQty: (id: number, qty: number) => void;
   remove: (id: number) => void;
@@ -38,8 +48,16 @@ const clampQty = (qty: number) => Math.max(1, Math.min(Math.trunc(qty) || 1, MAX
 
 export const useCartStore = create<CartState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       lines: [],
+      isOpen: false,
+
+      setOpen: (open) => set({ isOpen: open }),
+
+      addAndOpen: (id, qty = 1) => {
+        get().add(id, qty);
+        set({ isOpen: true });
+      },
 
       add: (id, qty = 1) =>
         set((state) => {

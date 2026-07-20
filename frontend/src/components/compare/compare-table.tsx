@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { ImageOff, X } from "lucide-react";
-import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -33,7 +32,7 @@ export function CompareTable({ products }: { products: ProductDetail[] }) {
   const [onlyDiff, setOnlyDiff] = useState(false);
 
   const removeFromCompare = useCompareStore((s) => s.remove);
-  const addToCart = useCartStore((s) => s.add);
+  const addAndOpenCart = useCartStore((s) => s.addAndOpen);
 
   /**
    * ⚠️ Рядки таблиці = БАЗОВІ ФАКТИ + характеристики. Саме в такому порядку, і саме тому:
@@ -288,10 +287,8 @@ export function CompareTable({ products }: { products: ProductDetail[] }) {
                           size="xl"
                           className="w-full"
                           disabled={p.availability === "out_of_stock"}
-                          onClick={() => {
-                            addToCart(p.id);
-                            toast.success(t("cart.title"), { description: p.name });
-                          }}
+                          /** Як і всюди: «Купити» одразу відкриває панель кошика. */
+                          onClick={() => addAndOpenCart(p.id)}
                         >
                           {t("product.buy")}
                         </Button>
