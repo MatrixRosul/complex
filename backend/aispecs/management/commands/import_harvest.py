@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandError
 
@@ -35,7 +36,7 @@ def _clean_desc(text: str) -> str:
 
 
 def _load(path: str) -> list[dict]:
-    text = open(path, encoding="utf-8").read()
+    text = Path(path).read_text(encoding="utf-8")
     # 1) цілий JSON (масив або {harvested:[...]})
     try:
         data = json.loads(text)
@@ -111,6 +112,4 @@ class Command(BaseCommand):
             )
             created += 1
 
-        self.stdout.write(
-            self.style.SUCCESS(f"Створено джоб: {created}. Пропущено: {skipped}.")
-        )
+        self.stdout.write(self.style.SUCCESS(f"Створено джоб: {created}. Пропущено: {skipped}."))

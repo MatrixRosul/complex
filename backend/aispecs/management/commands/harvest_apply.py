@@ -46,13 +46,11 @@ class Command(BaseCommand):
                 n = apply_job(job)
                 self.stdout.write(self.style.SUCCESS(f"  ✓ {job.product} — {n} полів"))
                 applied += 1
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 self.stderr.write(f"  ✗ {job.product}: {exc}")
                 failed += 1
 
         if opts["dry_run"]:
             self.stdout.write(f"\nDry-run: до застосування {qs.count()} джоб.")
         else:
-            self.stdout.write(
-                self.style.SUCCESS(f"\nЗастосовано: {applied}. Помилок: {failed}.")
-            )
+            self.stdout.write(self.style.SUCCESS(f"\nЗастосовано: {applied}. Помилок: {failed}."))

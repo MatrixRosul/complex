@@ -39,12 +39,17 @@ class SpecHarvestJob(TimeStampedModel):
         related_name="harvest_jobs",
     )
     category_key = models.CharField(
-        "Шаблон категорії", max_length=40, default="dishwasher",
+        "Шаблон категорії",
+        max_length=40,
+        default="dishwasher",
         help_text="Ключ у aispecs.category_specs.TEMPLATES — за ним мапляться характеристики.",
     )
     status = models.CharField(
-        "Статус", max_length=16, choices=Status.choices,
-        default=Status.NEEDS_REVIEW, db_index=True,
+        "Статус",
+        max_length=16,
+        choices=Status.choices,
+        default=Status.NEEDS_REVIEW,
+        db_index=True,
     )
 
     # --- матчинг товару з джерелом ---
@@ -66,12 +71,20 @@ class SpecHarvestJob(TimeStampedModel):
     applied_count = models.PositiveSmallIntegerField("Записано полів", default=0)
     error = models.TextField("Помилка", blank=True)
     created_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, verbose_name="Створив", null=True, blank=True,
-        on_delete=models.SET_NULL, related_name="+",
+        settings.AUTH_USER_MODEL,
+        verbose_name="Створив",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
     )
     reviewed_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, verbose_name="Переглянув", null=True, blank=True,
-        on_delete=models.SET_NULL, related_name="+",
+        settings.AUTH_USER_MODEL,
+        verbose_name="Переглянув",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
     )
     reviewed_at = models.DateTimeField("Переглянуто", null=True, blank=True)
 
@@ -97,6 +110,8 @@ class SpecHarvestJob(TimeStampedModel):
 
     def unconfirmed_specs(self) -> list[dict]:
         return [
-            s for s in (self.proposed_specs or [])
-            if s.get("exact_code") is False and (s.get("num") is not None or (s.get("text") or "").strip())
+            s
+            for s in (self.proposed_specs or [])
+            if s.get("exact_code") is False
+            and (s.get("num") is not None or (s.get("text") or "").strip())
         ]

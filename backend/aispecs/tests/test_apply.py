@@ -13,9 +13,8 @@ from catalog.models import (
     Attribute,
     AttributeOption,
     Category,
-    ProductAttributeValue,
     Product,
-    Unit,
+    ProductAttributeValue,
 )
 
 pytestmark = pytest.mark.django_db
@@ -40,14 +39,27 @@ def product() -> Product:
 
 def _job(product: Product, **over) -> SpecHarvestJob:
     specs = over.pop("specs", None) or [
-        {"key": "place_settings", "num": 14, "confidence": "high", "exact_code": True,
-         "source_url": "https://bosch.example/spec.pdf"},
+        {
+            "key": "place_settings",
+            "num": 14,
+            "confidence": "high",
+            "exact_code": True,
+            "source_url": "https://bosch.example/spec.pdf",
+        },
         {"key": "water_l", "num": 9, "confidence": "high", "exact_code": True},
         {"key": "energy_class", "text": "D", "confidence": "high", "exact_code": True},
-        {"key": "installation_type", "text": "Повністю вбудована", "confidence": "high",
-         "exact_code": True},
-        {"key": "third_rack", "text": "Так — висувна шухляда Vario3", "confidence": "high",
-         "exact_code": True},
+        {
+            "key": "installation_type",
+            "text": "Повністю вбудована",
+            "confidence": "high",
+            "exact_code": True,
+        },
+        {
+            "key": "third_rack",
+            "text": "Так — висувна шухляда Vario3",
+            "confidence": "high",
+            "exact_code": True,
+        },
         # не підтверджено точним кодом → має бути пропущено
         {"key": "noise_db", "num": 47, "confidence": "medium", "exact_code": False},
     ]
@@ -101,10 +113,12 @@ def test_apply_writes_confirmed_only(product: Product) -> None:
 
     # ГРІД ПОВНИЙ: усі поля шаблону присутні (значення або «Немає даних»)
     from aispecs.category_specs import get_template
+
     tpl_keys = {k for k in get_template("dishwasher") if not k.endswith("_list")}
     present = set(
-        ProductAttributeValue.objects.filter(product=product, attribute__code__in=tpl_keys)
-        .values_list("attribute__code", flat=True)
+        ProductAttributeValue.objects.filter(
+            product=product, attribute__code__in=tpl_keys
+        ).values_list("attribute__code", flat=True)
     )
     assert present == tpl_keys
 
@@ -140,12 +154,15 @@ def test_description_set_only_when_empty(product: Product) -> None:
 def test_manual_value_not_overwritten(product: Product) -> None:
     # людина вже виставила Витрату води вручну
     attr = Attribute.objects.create(
-        code="water_l", name="Витрата води",
+        code="water_l",
+        name="Витрата води",
         group=__import__("aispecs.services", fromlist=["_get_group"])._get_group("efficiency"),
         value_type=Attribute.ValueType.NUMBER,
     )
     ProductAttributeValue.objects.create(
-        product=product, attribute=attr, value_number=Decimal("7"),
+        product=product,
+        attribute=attr,
+        value_number=Decimal("7"),
         source=ProductSource.MANUAL,
     )
     apply_job(_job(product))
@@ -165,18 +182,38 @@ def test_generic_specs_by_name(product: Product) -> None:
     """Характеристика ПОЗА шаблоном (інша категорія) — створюється за назвою через словник."""
     specs = [
         # немає такого ключа в шаблоні посудомийок → generic за name_uk
-        {"key": "burners", "name_uk": "Кількість конфорок", "group_uk": "Основні",
-         "num": 4, "confidence": "high", "exact_code": True, "source_url": "https://bosch.pdf"},
-        {"key": "surface_material", "name_uk": "Матеріал поверхні", "group_uk": "Основні",
-         "text": "Загартоване скло", "confidence": "high", "exact_code": True},
-        {"key": "gas_control", "name_uk": "Газ-контроль", "text": "Так",
-         "confidence": "high", "exact_code": True},
+        {
+            "key": "burners",
+            "name_uk": "Кількість конфорок",
+            "group_uk": "Основні",
+            "num": 4,
+            "confidence": "high",
+            "exact_code": True,
+            "source_url": "https://bosch.pdf",
+        },
+        {
+            "key": "surface_material",
+            "name_uk": "Матеріал поверхні",
+            "group_uk": "Основні",
+            "text": "Загартоване скло",
+            "confidence": "high",
+            "exact_code": True,
+        },
+        {
+            "key": "gas_control",
+            "name_uk": "Газ-контроль",
+            "text": "Так",
+            "confidence": "high",
+            "exact_code": True,
+        },
     ]
     job = _job(product, specs=specs, programs=[])
     n = apply_job(job)
     assert n == 3
 
-    burners = ProductAttributeValue.objects.get(product=product, attribute__name_uk="Кількість конфорок")
+    burners = ProductAttributeValue.objects.get(
+        product=product, attribute__name_uk="Кількість конфорок"
+    )
     assert burners.value_number == Decimal("4")
     assert burners.attribute.value_type == Attribute.ValueType.NUMBER
     assert burners.attribute.needs_review is True and burners.attribute.is_filterable is False

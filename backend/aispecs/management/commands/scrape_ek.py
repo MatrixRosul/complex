@@ -19,11 +19,13 @@ import requests
 from django.core.management.base import BaseCommand
 from lxml import html as LH
 
-from aispecs.category_specs import ek_aliases, get_template, template_fields
+from aispecs.category_specs import ek_aliases, template_fields
 from aispecs.models import SpecHarvestJob
 from catalog.models import Product
 
-UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36"}
+UA = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36"
+}
 _SKIP_ROWS = {"офіційний сайт", "дата додавання на e-katalog", "поточна ціна", "де купити"}
 
 
@@ -36,12 +38,21 @@ def _num(value: str) -> float | None:
     return float(m.group().replace(",", ".")) if m else None
 
 
+def detect_brand(name: str, known: list[str]) -> str:
+    """Бренд із назви за словником (найдовший збіг), коли поле brand порожнє."""
+    low = name.lower()
+    for b in known:  # known відсортований за спаданням довжини
+        if b.lower() in low:
+            return b
+    return ""
+
+
 def ek_slug(brand: str, name: str) -> str:
     """Код моделі з назви → slug у форматі ek.ua (БРЕНД-МОДЕЛЬ, великими, дефіси)."""
     model = name
     if brand and brand.lower() in name.lower():
         i = name.lower().index(brand.lower())
-        model = name[i + len(brand):]
+        model = name[i + len(brand) :]
     raw = f"{brand} {model}"
     return re.sub(r"[^A-Za-z0-9]+", "-", raw).strip("-").upper()
 
@@ -139,9 +150,19 @@ class Command(BaseCommand):
         parser.add_argument("--ids", nargs="*", type=int)
         parser.add_argument("--limit", type=int)
         parser.add_argument("--dry", action="store_true", help="лише друк, без запису в чергу")
-        parser.add_argument("--out", default="", help="шлях: зберегти сирі+мапнуті дані у JSON (без запису в чергу)")
-        parser.add_argument("--all", action="store_true",
-                            help="усі категоризовані товари (крім службової та вже зроблених grid-категорій)")
+        parser.add_argument(
+            "--out", default="", help="шлях: зберегти сирі+мапнуті дані у JSON (без запису в чергу)"
+        )
+        parser.add_argument(
+            "--all",
+            action="store_true",
+            help="усі категоризовані товари (крім службової та вже зроблених grid-категорій)",
+        )
+        parser.add_argument(
+            "--missing",
+            action="store_true",
+            help="лише товари БЕЗ ШІ-характеристик (добір пропущених)",
+        )
         parser.add_argument("--sleep", type=float, default=1.5)
 
     def handle(self, *args, **o) -> None:
@@ -157,19 +178,32 @@ class Command(BaseCommand):
                 qs = qs.exclude(category__name_uk__icontains=term)
         elif o["filter"]:
             qs = qs.filter(category__name_uk__icontains=o["filter"])
+        if o["missing"]:
+            enriched = Product.objects.filter(attr_values__source="ai").values_list("id", flat=True)
+            qs = qs.exclude(id__in=list(enriched))
         if o["limit"]:
             qs = qs[: o["limit"]]
+
+        # словник брендів для визначення бренду з назви (коли поле порожнє)
+        from catalog.models import Brand
+
+        known_brands = sorted(
+            {b.name for b in Brand.objects.all()}
+            | {b for br in Brand.objects.all() for b in br.aliases},
+            key=len,
+            reverse=True,
+        )
 
         found = missed = 0
         misses = []
         collected: list[dict] = []
         for p in qs:
-            brand = str(p.brand) if p.brand else ""
+            brand = str(p.brand) if p.brand else detect_brand(p.name, known_brands)
             slug = ek_slug(brand, p.name)
             url = f"https://ek.ua/ua/{slug}.htm"
             try:
                 r = requests.get(url, headers=UA, timeout=25)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 self.stderr.write(f"  net {p.id}: {exc}")
                 missed += 1
                 continue
@@ -183,16 +217,25 @@ class Command(BaseCommand):
             confirmed = sum(1 for s in specs if s.get("key"))
             found += 1
             if o["out"]:
-                collected.append({
-                    "sku": p.sku, "product_id": p.id, "name": p.name,
-                    "category_key": o["category"], "model_code": slug,
-                    "primary_source_url": url, "source_type": "ek.ua",
-                    "specs": specs, "programs": programs,
-                    "raw_ek": [{"group": g, "name": n, "value": v} for g, n, v in rows],
-                })
+                collected.append(
+                    {
+                        "sku": p.sku,
+                        "product_id": p.id,
+                        "name": p.name,
+                        "category_key": o["category"],
+                        "model_code": slug,
+                        "primary_source_url": url,
+                        "source_type": "ek.ua",
+                        "specs": specs,
+                        "programs": programs,
+                        "raw_ek": [{"group": g, "name": n, "value": v} for g, n, v in rows],
+                    }
+                )
             elif o["dry"]:
                 self.stdout.write(f"\n✓ {p.name}  ({url})")
-                self.stdout.write(f"    сітка: {confirmed} · усього: {len(specs)} · програм: {len(programs)}")
+                self.stdout.write(
+                    f"    сітка: {confirmed} · усього: {len(specs)} · програм: {len(programs)}"
+                )
                 for s in specs[:8]:
                     v = s.get("num", s.get("text", ""))
                     self.stdout.write(f"      {s.get('key') or s.get('name_uk'):28} = {v}")
@@ -201,20 +244,30 @@ class Command(BaseCommand):
                     product=p, status=SpecHarvestJob.Status.NEEDS_REVIEW
                 ).delete()
                 SpecHarvestJob.objects.create(
-                    product=p, category_key=o["category"],
+                    product=p,
+                    category_key=o["category"],
                     status=SpecHarvestJob.Status.NEEDS_REVIEW,
-                    model_code=slug, matched=True, match_confidence="high",
-                    source_type="other", primary_source_url=url,
-                    proposed_specs=specs, proposed_programs=programs,
+                    model_code=slug,
+                    matched=True,
+                    match_confidence="high",
+                    source_type="other",
+                    primary_source_url=url,
+                    proposed_specs=specs,
+                    proposed_programs=programs,
                 )
             time.sleep(o["sleep"])
 
         if o["out"] and collected:
             import json
+
             with open(o["out"], "w", encoding="utf-8") as f:
                 json.dump(collected, f, ensure_ascii=False, indent=1)
-            self.stdout.write(self.style.SUCCESS(f"Збережено у {o['out']}: {len(collected)} товарів"))
+            self.stdout.write(
+                self.style.SUCCESS(f"Збережено у {o['out']}: {len(collected)} товарів")
+            )
 
-        self.stdout.write(self.style.SUCCESS(f"\nЗнайдено на ek.ua: {found} · не знайдено: {missed}"))
+        self.stdout.write(
+            self.style.SUCCESS(f"\nЗнайдено на ek.ua: {found} · не знайдено: {missed}")
+        )
         for m in misses[:30]:
             self.stdout.write(f"  ✗ {m}")

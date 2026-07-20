@@ -201,11 +201,13 @@ def template_fields(category_key: str) -> list[dict]:
     for key, (name, group_code, value_type, unit_code) in get_template(category_key).items():
         if key.endswith("_list"):  # службові (перелік програм) — не в сітці
             continue
-        out.append({
-            "key": key,
-            "label": name,
-            "unit": UNITS.get(unit_code, ("", []))[0] if unit_code else "",
-            "type": value_type,
-            "group": GROUPS.get(group_code, (group_code, 0))[0],
-        })
+        out.append(
+            {
+                "key": key,
+                "label": name,
+                "unit": UNITS.get(unit_code, ("", []))[0] if unit_code else "",
+                "type": value_type,
+                "group": GROUPS.get(group_code, (group_code, 0))[0],
+            }
+        )
     return out

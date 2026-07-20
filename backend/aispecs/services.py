@@ -144,7 +144,9 @@ def _get_unit_by_name(name: str | None) -> Unit | None:
     return unit
 
 
-def _get_attribute_by_name(name: str, group_name: str, value_type: str, unit_name: str | None) -> Attribute:
+def _get_attribute_by_name(
+    name: str, group_name: str, value_type: str, unit_name: str | None
+) -> Attribute:
     """Знайти/створити характеристику за НАЗВОЮ — для категорій без шаблону.
 
     Пошук по name_uk та aliases (як sync._find_by_name) — щоб «Витрата води» з різних
@@ -267,7 +269,9 @@ def _set_no_data(product, attr: Attribute, source: str) -> bool:
 
 
 @transaction.atomic
-def apply_job(job: SpecHarvestJob, user=None, *, set_description: bool = True, fill_empty: bool = True) -> int:
+def apply_job(
+    job: SpecHarvestJob, user=None, *, set_description: bool = True, fill_empty: bool = True
+) -> int:
     """Застосувати пропозицію: записати підтверджені характеристики + опис у товар.
 
     Повертає кількість записаних полів. Кидає ApplyError, якщо статус не той.

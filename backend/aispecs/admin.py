@@ -123,7 +123,8 @@ class SpecHarvestJobAdmin(ModelAdmin):
                     format_html(
                         '<tr style="opacity:.5"><td>{}</td><td>{}</td>'
                         '<td colspan="2"><i>не підтверджено точним кодом — пропущено</i></td></tr>',
-                        label, val,
+                        label,
+                        val,
                     )
                 )
             else:
@@ -131,15 +132,16 @@ class SpecHarvestJobAdmin(ModelAdmin):
                 rows.append(
                     format_html(
                         "<tr><td><b>{}</b></td><td>{}</td><td>{}</td><td>{}</td></tr>",
-                        label, val, conf, link,
+                        label,
+                        val,
+                        conf,
+                        link,
                     )
                 )
         progs = ", ".join(str(p) for p in (obj.proposed_programs or []))
         if progs:
             rows.append(
-                format_html(
-                    "<tr><td><b>Перелік програм</b></td><td colspan=3>{}</td></tr>", progs
-                )
+                format_html("<tr><td><b>Перелік програм</b></td><td colspan=3>{}</td></tr>", progs)
             )
         if not rows:
             return format_html("<i>Порожньо.</i>")
@@ -166,7 +168,7 @@ class SpecHarvestJobAdmin(ModelAdmin):
             try:
                 apply_job(job, request.user)
                 ok += 1
-            except (ApplyError, Exception) as exc:  # noqa: BLE001 — показуємо будь-яку помилку
+            except (ApplyError, Exception) as exc:
                 fail += 1
                 messages.error(request, f"{job.product}: {exc}")
         if ok:
@@ -192,7 +194,7 @@ class SpecHarvestJobAdmin(ModelAdmin):
         try:
             n = apply_job(job, request.user)
             self.message_user(request, f"Записано {n} полів у «{job.product}».", messages.SUCCESS)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             self.message_user(request, f"Помилка: {exc}", messages.ERROR)
 
     @action(description="Відхилити", icon="close")
