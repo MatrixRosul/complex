@@ -125,6 +125,72 @@ def get_template(category_key: str) -> dict[str, tuple[str, str, str, str | None
     return TEMPLATES.get(category_key, {})
 
 
+# Відповідність назв характеристик ek.ua → ключі нашої сітки (нормалізовано: lower, один пробіл).
+# Те, чого тут немає, лягає як generic-характеристика за назвою (name_uk).
+EK_ALIASES: dict[str, dict[str, str]] = {
+    "dishwasher": {
+        "тип установки": "installation_type",
+        "кількість комплектів посуду": "place_settings",
+        "витрата води": "water_l",
+        "сушіння": "drying_type",
+        "відсік для приладів": "third_rack",
+        "інверторний двигун": "inverter_motor",
+        "клас енергоспоживання (new)": "energy_class",
+        "клас енергоспоживання": "energy_class",
+        "рівень шуму": "noise_db",
+        "клас гучності": "noise_class",
+        "кількість програм": "programs_count",
+        "захист від протікання": "leak_protection",
+        "таймер відстрочки запуску": "delay_start",
+        "проекція роботи на підлозі": "beam_on_floor",
+        "регулювання верхнього кошика": "adjustable_basket",
+        "управління зі смартфона (wi-fi)": "connectivity",
+        "дисплей": "display",
+        "габарити (вхшхг)": "dimensions_hwd_cm",
+        "напівзавантаження": "half_load",
+        "колір": "color_panel",
+    },
+    "oven": {
+        "тип": "oven_type",
+        "об'єм": "volume_l",
+        "обʼєм": "volume_l",
+        "очищення": "cleaning_type",
+        "тип очищення": "cleaning_type",
+        "клас енергоспоживання (new)": "energy_class",
+        "клас енергоспоживання": "energy_class",
+        "конвекція": "convection",
+        "гриль": "grill",
+        "телескопічні напрямні": "telescopic_rails",
+        "термощуп": "meat_probe",
+        "дисплей": "display",
+        "таймер": "timer",
+        "управління зі смартфона (wi-fi)": "connectivity",
+        "габарити (вхшхг)": "dimensions_hwd_cm",
+        "колір": "color",
+        "управління": "control_type",
+        "макс. температура": "max_temp",
+    },
+    "hob": {
+        "тип": "hob_type",
+        "кількість конфорок": "burners",
+        "матеріал поверхні": "surface_material",
+        "управління": "control_type",
+        "газ-контроль": "gas_control",
+        "автопідпал": "ignition",
+        "індикатор залишкового тепла": "residual_heat",
+        "booster": "booster",
+        "таймер": "timer",
+        "захист від дітей": "safety_lock",
+        "габарити (вхшхг)": "dimensions_hwd_cm",
+        "колір": "color",
+    },
+}
+
+
+def ek_aliases(category_key: str) -> dict[str, str]:
+    return EK_ALIASES.get(category_key, {})
+
+
 def template_fields(category_key: str) -> list[dict]:
     """Сітку категорії у вигляді для збирача: [{key, label, unit, type, group}].
 

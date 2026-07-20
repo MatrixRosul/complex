@@ -277,10 +277,10 @@ def apply_job(job: SpecHarvestJob, user=None, *, set_description: bool = True, f
             f"Джобу {job.pk} не застосувати зі статусу «{job.get_status_display()}» — "
             "лише з «На перегляд»."
         )
+    # Немає сітки → generic-режим: усі характеристики за назвою (name_uk), без «Немає даних».
+    # Це дозволяє покрити будь-яку категорію; уніфікацію в такому разі дає саме джерело
+    # (ek.ua вживає однакові назви параметрів у межах категорії).
     template = get_template(job.category_key)
-    if not template:
-        raise ApplyError(f"Немає шаблону характеристик для категорії «{job.category_key}».")
-
     order_by_key = {key: (i + 1) * 10 for i, key in enumerate(template)}
     product = job.product
     count = 0

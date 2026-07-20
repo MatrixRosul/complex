@@ -79,10 +79,16 @@ class Command(BaseCommand):
 
         created = skipped = 0
         for p in products:
+            sku = p.get("sku")
             pid = p.get("product_id")
-            product = Product.objects.filter(pk=pid).first()
+            # матч за SKU (стабільний ключ, однаковий на dev/prod), інакше за id
+            product = None
+            if sku:
+                product = Product.objects.filter(sku=sku).first()
+            if product is None and pid:
+                product = Product.objects.filter(pk=pid).first()
             if product is None:
-                self.stderr.write(f"  пропуск: немає товару id={pid}")
+                self.stderr.write(f"  пропуск: немає товару sku={sku} id={pid}")
                 skipped += 1
                 continue
             if opts["replace"]:
