@@ -16,7 +16,17 @@ import type { AssistantProduct } from "@/lib/api/assistant";
  * панель і чи триває стрім — стан поточної вкладки, а не те, що має пережити
  * перезавантаження сторінки (інакше після F5 користувач побачив би панель, що
  * «вічно друкує», бо реальний fetch-стрім обірвався разом зі сторінкою).
+ *
+ * НУДЖ (проактивна бульбашка «Я ШІ-помічник, допомогти?»):
+ *   `hasOpenedChat` / `nudgeDismissedAt` — persist (переживають F5): якщо людина ХОЧ РАЗ
+ *      відкрила чат, більше не смикаємо ніколи; після закриття бульбашки — пауза NUDGE_COOLDOWN_MS.
+ *   `nudgeVisible` — ПОЗА partialize: бульбашка видима лише в поточній вкладці, не «оживає» після F5.
+ * ⚠️ Версію стору НЕ піднімаємо: нові поля відсутні у збереженому v1, і zustand змерджить їх
+ *    з початкових значень (shallow-merge persisted поверх initialState) — історія чату не втрачається.
  */
+
+/** Пауза між показами бульбашки після того, як користувач її закрив. */
+export const NUDGE_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000; // 7 днів
 
 export type AssistantLink = {
   url: string;
@@ -44,9 +54,21 @@ type AssistantState = {
   isStreaming: boolean;
   streamPhase: StreamPhase;
 
+  /** Чи відкривав користувач чат хоч раз. true → нудж більше не показуємо ніколи. */
+  hasOpenedChat: boolean;
+  /** Коли востаннє закрили бульбашку (для паузи NUDGE_COOLDOWN_MS). null → ще не закривали. */
+  nudgeDismissedAt: number | null;
+  /** Чи видима бульбашка ЗАРАЗ (стан вкладки, не persist). */
+  nudgeVisible: boolean;
+
   open: () => void;
   close: () => void;
   toggle: () => void;
+
+  /** Показати бульбашку (кличе хук-тригер за сигналом залученості). */
+  showNudge: () => void;
+  /** Користувач закрив бульбашку хрестиком — ставимо паузу, ховаємо. */
+  dismissNudge: () => void;
 
   setSessionToken: (token: string) => void;
   setStreaming: (value: boolean) => void;
@@ -77,10 +99,23 @@ export const useAssistantStore = create<AssistantState>()(
       isOpen: false,
       isStreaming: false,
       streamPhase: "idle",
+      hasOpenedChat: false,
+      nudgeDismissedAt: null,
+      nudgeVisible: false,
 
-      open: () => set({ isOpen: true }),
+      // Відкриття чату (будь-яким шляхом) — це «людина знає про асистента»: гасимо бульбашку
+      // назавжди. Тому hasOpenedChat виставляється і в open, і в toggle (коли toggle відкриває).
+      open: () => set({ isOpen: true, hasOpenedChat: true, nudgeVisible: false }),
       close: () => set({ isOpen: false }),
-      toggle: () => set((state) => ({ isOpen: !state.isOpen })),
+      toggle: () =>
+        set((state) =>
+          state.isOpen
+            ? { isOpen: false }
+            : { isOpen: true, hasOpenedChat: true, nudgeVisible: false },
+        ),
+
+      showNudge: () => set({ nudgeVisible: true }),
+      dismissNudge: () => set({ nudgeVisible: false, nudgeDismissedAt: Date.now() }),
 
       setSessionToken: (token) => set({ sessionToken: token }),
       setStreaming: (value) => set({ isStreaming: value }),
@@ -135,9 +170,15 @@ export const useAssistantStore = create<AssistantState>()(
       name: "complex.assistant",
       version: 1,
       storage: createJSONStorage(() => localStorage),
-      // Явний whitelist: isOpen/isStreaming/streamPhase НІКОЛИ не потрапляють
-      // у localStorage, навіть якщо хтось випадково розширить стор.
-      partialize: (state) => ({ sessionToken: state.sessionToken, messages: state.messages }),
+      // Явний whitelist: isOpen/isStreaming/streamPhase/nudgeVisible НІКОЛИ не потрапляють
+      // у localStorage (стан вкладки). hasOpenedChat/nudgeDismissedAt — навпаки, persist:
+      // рішення «не смикати цю людину» має пережити перезавантаження й нові вкладки.
+      partialize: (state) => ({
+        sessionToken: state.sessionToken,
+        messages: state.messages,
+        hasOpenedChat: state.hasOpenedChat,
+        nudgeDismissedAt: state.nudgeDismissedAt,
+      }),
     },
   ),
 );

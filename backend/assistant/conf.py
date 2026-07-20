@@ -35,6 +35,7 @@ from __future__ import annotations
 import logging
 import os
 from decimal import Decimal, InvalidOperation
+from typing import Any
 
 from django.conf import settings
 
@@ -55,6 +56,8 @@ __all__ = [
     "model",
     "monthly_budget_usd",
     "spec",
+    "stream_tuning",
+    "supports_adaptive",
 ]
 
 # ---------------------------------------------------------------------------
@@ -121,6 +124,39 @@ THINKING: dict[str, str] = {"type": "adaptive", "display": "summarized"}
 
 # Скільки разів модель може сходити в інструменти в межах одного повідомлення.
 MAX_ITERATIONS = 6
+
+# Родини моделей, що РОЗУМІЮТЬ adaptive thinking + output_config.effort (покоління 4.6+).
+# ⚠️ Haiku 4.5 і Sonnet 4.5 їх НЕ приймають — обидва параметри дають 400. Тому параметри
+#    виклику мусять залежати від моделі (stream_tuning), а не бути глобальною константою:
+#    інакше зміна ASSISTANT_MODEL на дешевший Haiku клала б кожен запит.
+_ADAPTIVE_PREFIXES = (
+    "claude-opus-4-6",
+    "claude-opus-4-7",
+    "claude-opus-4-8",
+    "claude-sonnet-5",
+    "claude-sonnet-4-6",
+    "claude-fable",
+    "claude-mythos",
+)
+
+
+def supports_adaptive(model_name: str) -> bool:
+    """Чи приймає модель adaptive thinking + effort (родина 4.6+)."""
+    return model_name.startswith(_ADAPTIVE_PREFIXES)
+
+
+def stream_tuning(model_name: str, effort: str | None = None) -> dict[str, Any]:
+    """Параметри думання/зусилля під конкретну модель.
+
+    4.6+ (Opus 4.x, Sonnet 5) → adaptive thinking + effort (найкращий вибір інструмента).
+    Haiku 4.5 / Sonnet 4.5 → thinking ВИМКНЕНО, effort НЕ передаємо (інакше 400). Це й
+    дешевше (нуль thinking-токенів), і швидше; за якість вибору інструмента тоді відповідають
+    prescriptive-описи інструментів (tools.py) — і саме це треба перевірити живцем перед
+    переходом на Haiku, бо слабша модель схильна недо-викликати інструменти.
+    """
+    if supports_adaptive(model_name):
+        return {"thinking": dict(THINKING), "output_config": {"effort": effort or EFFORT}}
+    return {"thinking": {"type": "disabled"}}
 
 
 # ---------------------------------------------------------------------------

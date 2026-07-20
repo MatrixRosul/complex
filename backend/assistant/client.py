@@ -219,15 +219,18 @@ class AsyncAnthropicClient:
         max_tokens: int | None,
         effort: str | None,
     ) -> dict[str, Any]:
+        model_name = model or conf.model()
         params: dict[str, Any] = {
-            "model": model or conf.model(),
+            "model": model_name,
             "max_tokens": max_tokens or conf.MAX_TOKENS,
             "system": system,
             "messages": list(messages),
-            # Без display="summarized" thinking-блоки приходять порожні, і стрім мовчить
-            # рівно стільки, скільки модель думає (conf.THINKING).
-            "thinking": dict(conf.THINKING),
-            "output_config": {"effort": effort or conf.EFFORT},
+            # Параметри думання/зусилля — ЗАЛЕЖНО ВІД МОДЕЛІ (conf.stream_tuning):
+            # 4.6+ отримують adaptive thinking + effort (з display="summarized", інакше
+            # thinking-блоки порожні й стрім мовчить, поки модель думає); Haiku 4.5 / Sonnet 4.5
+            # їх не приймають (400), тому там thinking вимкнено. Без цього зміна ASSISTANT_MODEL
+            # на дешевшу модель клала б кожен запит.
+            **conf.stream_tuning(model_name, effort),
         }
         if tools:
             params["tools"] = list(tools)

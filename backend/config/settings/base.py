@@ -106,6 +106,9 @@ MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.locale.LocaleMiddleware",
+    # Одразу ПІСЛЯ LocaleMiddleware: пінить адмінку на uk, перекриваючи вибір за
+    # Accept-Language. Порядок критичний — до Locale не спрацює. Див. docstring middleware.
+    "core.middleware.ForceAdminLanguageMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
@@ -222,6 +225,18 @@ AXES_BEHIND_REVERSE_PROXY = env.bool("AXES_BEHIND_REVERSE_PROXY", default=False)
 AXES_IPWARE_PROXY_COUNT = 1 if AXES_BEHIND_REVERSE_PROXY else None
 AXES_IPWARE_META_PRECEDENCE_ORDER = ["HTTP_X_FORWARDED_FOR", "REMOTE_ADDR"]
 
+# --- django-ninja throttling: скільки проксі-хопів перед нами ---
+# 🔴 БЕЗ ЦЬОГО per-IP тротлінг (AnonRateThrottle на /assistant/chat) НЕ ЗАХИЩАЄ:
+# за замовчуванням NINJA_NUM_PROXIES=None, і ninja бере як «особистість» увесь заголовок
+# X-Forwarded-For — а його шле сам клієнт. Досить крутити XFF у кожному запиті, і ліміт
+# 20/хв обходиться повністю (класична діра публічного LLM-ендпоінта = відкритий гаманець).
+#   1 хоп (за Caddy у проді) → ninja бере ОСТАННІЙ запис XFF, тобто IP, який побачив Caddy,
+#     ігноруючи будь-що, що клієнт дописав раніше в ланцюг → підміну знешкоджено.
+#   0 (дев, без проксі)      → XFF ігнорується взагалі, ключ = REMOTE_ADDR.
+# Дзеркалимо той самий прапорець, що й axes вище — щоб два лічильники IP не розійшлися.
+# ⚠️ Якщо перед Caddy стане ще й Cloudflare-proxy (2 хопи) — підняти обидва (тут і axes).
+NINJA_NUM_PROXIES = 1 if AXES_BEHIND_REVERSE_PROXY else 0
+
 # --- django-otp: TOTP обов'язковий для всього staff ---
 OTP_TOTP_ISSUER = "Complex"
 # Обов'язковість OTP вмикається через AdminSite (OTPAdminSite) у core/admin.py —
@@ -229,13 +244,23 @@ OTP_TOTP_ISSUER = "Complex"
 
 # ---------------------------------------------------------------------------
 # i18n / l10n.  uk — дефолт, ru — обов'язково вже в MVP.
+#
+# ⚠️ ДВІ РІЗНІ ДВОМОВНОСТІ, які легко сплутати:
+#   · САЙТ — uk + ru, вимога замовника (INPUTS §1). Працює через modeltranslation: це про
+#     ДАНІ (name_uk / name_ru), і LANGUAGES/LocaleMiddleware нижче потрібні саме йому.
+#   · АДМІНКА — ТІЛЬКИ УКРАЇНСЬКА, свідомо (рішення 17.07.2026). gettext у проєкті не
+#     використовується: всі підписи — український хардкод. Тому LOCALE_PATHS тут НЕМАЄ —
+#     раніше він вказував на backend/locale/, якої не існує, і створював враження, що
+#     переклад UI налаштований. Каркас Django admin українською дають вбудовані каталоги
+#     самого Django. Див. UNFOLD["SHOW_LANGUAGES"] нижче — там повне обґрунтування.
+#     Якщо колись знадобиться ru-інтерфейс — це не «увімкнути прапорець», а окрема робота:
+#     обгорнути ~300 рядків у gettext, завести locale/, ПЛЮС перекласти сам Unfold.
 # ---------------------------------------------------------------------------
 LANGUAGE_CODE = "uk"
 LANGUAGES = [
     ("uk", "Українська"),
     ("ru", "Русский"),
 ]
-LOCALE_PATHS = [BASE_DIR / "locale"]
 
 USE_I18N = True
 USE_L10N = True
@@ -453,9 +478,12 @@ TELEGRAM_BOT_TOKEN = env("TELEGRAM_BOT_TOKEN", default="")
 TELEGRAM_CHAT_ID = env("TELEGRAM_CHAT_ID", default="")
 HEALTHCHECKS_SYNC_URL = env("HEALTHCHECKS_SYNC_URL", default="")
 
+
 # ---------------------------------------------------------------------------
 # Unfold (адмінка).  Кольори — docs/research/DESIGN_SYSTEM.md:
-#   акцент #C2410C (light) / #FB7318 (dark) = сімейство Tailwind orange.
+#   акцент #15558F (light) / #4E9BE0 (dark), бренд-темний #0E3F68 = колір
+#   вордмарку COMPLEX. Шкала 50–950 згенерована рівномірно навколо цих трьох
+#   точок (hue 208°), тому 700/900/400 = саме вони, а не «схожий» відтінок.
 # ---------------------------------------------------------------------------
 def _nav(title: str, model: str, icon: str) -> dict:
     """Один пункт меню: посилання на список моделі (admin:<app>_<model>_changelist)."""
@@ -579,7 +607,17 @@ UNFOLD = {
     "SITE_SYMBOL": "kitchen",
     "SHOW_HISTORY": True,
     "SHOW_VIEW_ON_SITE": True,
-    "SHOW_LANGUAGES": True,  # перемикач uk/ru у полях modeltranslation
+    # 🔴 НЕ ВМИКАТИ. Це перемикач МОВИ ІНТЕРФЕЙСУ у випадайці користувача (він постить у
+    #    set_language), а НЕ таби uk/ru на перекладних полях — ті дає TabbedTranslationAdmin
+    #    із modeltranslation і від цього прапорця не залежать узагалі.
+    #    Вмикати його шкідливо з двох причин (обидві перевірені 17.07.2026):
+    #      1. Адмінка одномовна: gettext у проєкті не використовується, всі 161 підпис —
+    #         український хардкод. Перемикання на ru давало мішанину — російський каркас
+    #         Django + українське меню + англійські рядки самого Unfold (він робить 113
+    #         викликів _(), але постачається БЕЗ locale-каталогів).
+    #      2. Активна мова керує дескрипторами modeltranslation: у ru-режимі колонка «Назва»
+    #         почала б мовчки показувати й редагувати name_ru замість name.
+    "SHOW_LANGUAGES": False,
     "THEME": None,  # користувач сам обирає light/dark
     "BORDER_RADIUS": "8px",
     "COLORS": {
@@ -596,18 +634,18 @@ UNFOLD = {
             "900": "24 24 27",
             "950": "9 9 11",
         },
-        "primary": {  # димчастий помаранчевий: 700 = #C2410C, 500 = #F97316, 400 ≈ #FB7318
-            "50": "255 247 237",
-            "100": "255 237 213",
-            "200": "254 215 170",
-            "300": "253 186 116",
-            "400": "251 146 60",
-            "500": "249 115 22",
-            "600": "234 88 12",
-            "700": "194 65 12",
-            "800": "154 52 18",
-            "900": "124 45 18",
-            "950": "67 20 7",
+        "primary": {  # бренд-синій: 700 = #15558F (акцент), 900 = #0E3F68 (лого), 400 = #4E9BE0 (dark-тема)
+            "50": "236 243 249",
+            "100": "215 230 244",
+            "200": "180 211 238",
+            "300": "131 184 231",
+            "400": "78 155 224",
+            "500": "32 120 197",
+            "600": "25 102 169",
+            "700": "21 85 143",
+            "800": "17 70 116",
+            "900": "14 63 104",
+            "950": "8 38 64",
         },
         "font": {
             "subtle-light": "107 114 128",

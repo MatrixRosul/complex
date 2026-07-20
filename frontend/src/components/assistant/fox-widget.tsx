@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { Fox } from "@/components/assistant/fox";
 import { ChatPanel } from "@/components/assistant/chat-panel";
+import { FoxNudge } from "@/components/assistant/fox-nudge";
+import { useNudgeTrigger } from "@/components/assistant/use-nudge";
 import { useAssistantStore } from "@/store/assistant";
 import { useHydrated } from "@/hooks/use-hydrated";
 import { useT } from "@/i18n/provider";
@@ -37,6 +39,13 @@ export function FoxWidget() {
   const streamPhase = useAssistantStore((s) => s.streamPhase);
   const toggle = useAssistantStore((s) => s.toggle);
   const close = useAssistantStore((s) => s.close);
+  const nudgeVisible = useAssistantStore((s) => s.nudgeVisible);
+  const hasOpenedChat = useAssistantStore((s) => s.hasOpenedChat);
+  const nudgeDismissedAt = useAssistantStore((s) => s.nudgeDismissedAt);
+
+  // Тригер бульбашки (скрол/затримка) — хук завжди викликається; усередині сам вирішує,
+  // чи ставити слухачі. Гейтимо параметром, а не умовним викликом (правила хуків).
+  useNudgeTrigger(hydrated);
 
   if (!hydrated) return null;
 
@@ -48,8 +57,14 @@ export function FoxWidget() {
       ? "hover"
       : "idle";
 
+  // Тиха крапка на кнопці ПІСЛЯ того, як бульбашку закрили, але чат так і не відкрили:
+  // лишається натяк «тут щось є», без повторного нудіння. Зникає назавжди по відкритті чату.
+  const showDot = !isOpen && !hasOpenedChat && nudgeDismissedAt !== null && !nudgeVisible;
+
   return (
     <>
+      {/* Одноразовий «махнути» кнопкою в момент появи бульбашки — зв'язує бульбашку з лисичкою. */}
+      <style>{WIGGLE_KEYFRAMES}</style>
       <button
         type="button"
         onClick={toggle}
@@ -66,12 +81,36 @@ export function FoxWidget() {
           "hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none",
           "motion-reduce:transition-none motion-reduce:hover:translate-y-0",
           "sm:right-6 sm:bottom-6",
+          nudgeVisible && "cx-fox-wiggle",
         )}
       >
         <Fox state={foxState} />
+        {showDot ? (
+          <span
+            aria-hidden="true"
+            className="absolute top-0.5 right-0.5 size-3 rounded-full bg-primary ring-2 ring-card"
+          />
+        ) : null}
       </button>
+
+      <FoxNudge />
 
       {isOpen ? <ChatPanel onClose={close} /> : null}
     </>
   );
 }
+
+// Один короткий «махок» при появі бульбашки. Не цикл (це дратувало б і ламало б дисципліну
+// акценту). У reduced-motion — нічого.
+const WIGGLE_KEYFRAMES = `
+  @keyframes cx-fox-wiggle {
+    0%, 100% { transform: rotate(0deg); }
+    25%      { transform: rotate(-9deg); }
+    60%      { transform: rotate(7deg); }
+    80%      { transform: rotate(-3deg); }
+  }
+  .cx-fox-wiggle { animation: cx-fox-wiggle 0.6s ease-in-out 1; }
+  @media (prefers-reduced-motion: reduce) {
+    .cx-fox-wiggle { animation: none; }
+  }
+`;

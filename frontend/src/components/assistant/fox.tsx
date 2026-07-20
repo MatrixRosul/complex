@@ -14,11 +14,18 @@ import { cn } from "@/lib/utils";
  * у власному <style> компонента, під унікальним префіксом класів `cx-fox-*`,
  * щоб гарантовано не перетнутися з чимось глобальним.
  *
+ * Колір: лисичка має ВЛАСНІ токени --fox / --fox-muted, а не --primary. Це
+ * навмисно. Бренд перефарбовано в темно-синій (#0E3F68 з вордмарку COMPLEX),
+ * і якби лисичка сиділа на --primary, вона стала б синьою — а синя лисиця не
+ * читається як лисиця. Рудий тут — ознака ПЕРСОНАЖА, а не акцент інтерфейсу,
+ * тому він і винесений в окрему пару токенів (globals.css, light + dark).
+ *
  * Дисципліна акценту (docs/research/DESIGN_SYSTEM.md §2.3: «акцент = тут гроші
- * / тут дія»): у стані idle й thinking лисичка руда, але ПРИГЛУШЕНА
- * (--brand-subtle-foreground) — вона не повинна конкурувати з кнопкою
- * «Купити». Повний --primary вмикається лише в hover і talking, тобто саме
- * тоді, коли лисичка сама стає закликом до дії (наведення / відповідь).
+ * / тут дія») збережена всередині власної шкали: у стані idle й thinking
+ * лисичка ПРИГЛУШЕНА (--fox-muted) і не конкурує з кнопкою «Купити», а повний
+ * --fox вмикається лише в hover і talking — коли лисичка сама стає закликом до
+ * дії (наведення / відповідь). Бейдж непрочитаного у fox-widget лишається на
+ * --primary: це вже елемент інтерфейсу, і він синій разом з рештою.
  */
 
 type FoxState = "idle" | "hover" | "thinking" | "talking";
@@ -112,7 +119,7 @@ export function Fox({ state, className }: FoxProps) {
         data-fox-state={state}
         className={cn(
           "cx-fox size-16 transition-colors duration-300 motion-reduce:transition-none",
-          isAccent ? "text-primary" : "text-brand-subtle-foreground",
+          isAccent ? "text-fox" : "text-fox-muted",
           className,
         )}
       >
