@@ -62,6 +62,7 @@ class Banner(TimeStampedModel):
     class Placement(models.TextChoices):
         HOME_SLIDER = "home_slider", "Слайдер головної"
         HOME_PROMO = "home_promo", "Промо-блок головної"
+        HOME_SIDE = "home_side", "Реклама праворуч від каталогу (головна)"
         CATEGORY_TOP = "category_top", "Банер над категорією"
 
     placement = models.CharField(

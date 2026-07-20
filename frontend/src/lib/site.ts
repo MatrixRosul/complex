@@ -29,6 +29,8 @@ export const FALLBACK_CONTACTS = (lang: ApiLang): ContactsOut => ({
 export const PAGE_MENU_BLOCK: Record<string, string> = {
   "payment-delivery": "buyers",
   warranty: "buyers",
+  credit: "buyers",
+  return: "buyers",
   about: "info",
   contacts: "info",
 };

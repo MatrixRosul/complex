@@ -10,6 +10,12 @@ const buttonVariants = cva(
       variant: {
         // ⚠️ Ховер/актив — НЕ opacity, а окремі токени --primary-hover / --primary-active
         // (DESIGN_SYSTEM §2.1). Прозорість зіпсувала б контраст на світлому фоні.
+        //
+        // ⚠️ БЕЗ `aria-expanded:` — і це навмисно. Тут стояла зміна фону на відкритому
+        // меню, але замовник відхилив: відкритий каталог має бути видно по САМІЙ ПАНЕЛІ
+        // каталогу (вона залита `bg-brand-subtle`), а не по кнопці в шапці. Дві підсвітки
+        // одночасно змагались за увагу. На outline/secondary/ghost патерн лишається —
+        // там немає панелі, яка б несла цей сигнал.
         default:
           "bg-primary text-primary-foreground hover:bg-primary-hover active:bg-primary-active",
         // Друга дія («Купити в 1 клік») — нейтральний контраст, не акцент.

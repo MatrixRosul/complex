@@ -24,8 +24,9 @@ import { useCompareStore } from "@/store/compare";
 import { useWishlistStore } from "@/store/wishlist";
 import { useHydrated } from "@/hooks/use-hydrated";
 import type { CategoryOut, ContactsOut, MenuItemOut } from "@/lib/api/types";
+import type { CategoryEmblemData } from "@/lib/category-icons";
 
-import { CategoryIcon } from "./category-icon";
+import { CategoryEmblem } from "./category-icon";
 import { LocaleSwitcher } from "./locale-switcher";
 import { ThemeToggle } from "./theme-toggle";
 
@@ -52,7 +53,7 @@ export function MobileBurgerMenu({
   categories: CategoryOut[];
   menuItems: MenuItemOut[];
   contacts: ContactsOut;
-  iconOf: Record<string, string>;
+  iconOf: Record<string, CategoryEmblemData>;
 }) {
   const t = useT();
   const locale = useLocale();
@@ -180,7 +181,7 @@ export function MobileBurgerMenu({
                 onClick={close}
                 className="flex h-14 items-center gap-3 border-b border-border px-4 text-base text-foreground"
               >
-                <CategoryIcon name={iconOf[cat.external_id] ?? "package"} />
+                <CategoryEmblem emblem={iconOf[cat.external_id]} className="size-8" />
                 <span className="flex-1">{cat.name}</span>
                 <span className="text-xs text-muted-foreground tnum">
                   {cat.products_count}

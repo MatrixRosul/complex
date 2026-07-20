@@ -1,16 +1,16 @@
 import Link from "next/link";
 
-import { buttonVariants } from "@/components/ui/button";
-import { BannerCard } from "@/components/cms/banner-card";
+import { PromoBanner, SideAd } from "@/components/cms/banner-slots";
 import { BrandStrip } from "@/components/home/brand-strip";
+import { CatalogSidebar } from "@/components/home/catalog-sidebar";
 import { CategoryTiles } from "@/components/home/category-tiles";
 import { RecentlyViewed } from "@/components/home/recently-viewed";
 import { TrustStrip } from "@/components/home/trust-strip";
 import { RelatedProducts } from "@/components/product/related-products";
 import { api } from "@/lib/api";
+import { emblemMap } from "@/lib/category-icons";
 import { getT } from "@/i18n/dictionary";
 import { localePath, localeToApiLang, type Locale } from "@/i18n/config";
-import { cn } from "@/lib/utils";
 import type { CollectionKey } from "@/lib/api/types";
 import type { TranslationKey } from "@/i18n/dictionary";
 
@@ -54,59 +54,51 @@ export default async function HomePage({
   ]);
 
   /**
-   * ⚠️ БАНЕРІВ У БАЗІ НЕМАЄ — І ЦЕ ШТАТНИЙ СТАН. Три демо-банери («Вбудована техніка Bosch /
-   * знижка до 15%») були вигадкою розробника: таких акцій у магазині не існує. Модель,
-   * адмінка і GET /cms/banners лишились — замовник заведе банер під СПРАВЖНЮ акцію, і він
-   * з'явиться тут сам. Поки банерів нема — секції просто немає, головна починається з
-   * категорій (жодної діри в макеті, жодної заглушки).
+   * ДВА СЛОТИ РЕКЛАМИ КАТАЛОГУ (референс denika.ua):
+   *   • promo   — ШИРОКИЙ банер праворуч від списку у стані СПОКОЮ (каталог закритий).
+   *               home_promo → слайдер → перший-ліпший (крім того, що вже пішов у бічний).
+   *   • sideAd  — ВУЗЬКА вертикальна реклама праворуч від підгруп у ВІДКРИТОМУ стані (home_side).
+   * Банерів у БД нема → обидва null, права зона просто порожня (жодної заглушки — за
+   * фейкові промо в цьому проєкті вже зносили демо-банери).
+   *
+   * ⚠️ ОКРЕМОЇ HERO-СЕКЦІЇ НИЖЧЕ БІЛЬШЕ НЕМАЄ. У denika-моделі широкий банер стоїть
+   * ПОРУЧ ІЗ КАТАЛОГОМ угорі — це і є hero. Другий великий банер під ним показував би
+   * промо того самого класу вдруге (дублювання, на яке поскаржився замовник) і зіштовхував
+   * би реальний контент — каруселі категорій — донизу. Тому промо тепер живе рівно в одному
+   * місці: правій зоні каталогу. Жодного банера не втрачено як РОЛЬ (промо + бічна реклама),
+   * а якщо промо-банерів кілька — у слоті показується перший (ротація-слайдер — окрема задача).
    */
-  const hero = banners.find((b) => b.placement === "home_hero") ?? banners[0];
-  const rest = banners.filter((b) => b.id !== hero?.id);
+  const sideBanner = banners.find((b) => b.placement === "home_side") ?? null;
+  const promoBannerData =
+    banners.find((b) => b.placement === "home_promo") ??
+    banners.find((b) => b.placement === "home_slider") ??
+    banners.find((b) => b.id !== sideBanner?.id) ??
+    null;
 
   return (
     <div className="container-complex flex flex-col gap-12 py-6">
-      {/* ── Банери (лише якщо замовник їх завів) ─────────────────────── */}
-      {hero && (
-        <section className="grid gap-4 lg:grid-cols-3">
-          <BannerCard
-            banner={hero}
-            locale={locale}
-            priority
-            sizes="(max-width: 1024px) 100vw, 66vw"
-            className="group min-h-64 p-6 lg:col-span-2 lg:min-h-80"
-          >
-            <h1 className="text-display banner-text">{hero.title}</h1>
-            <p className="max-w-md text-base banner-text-muted">{hero.subtitle}</p>
-            {hero.cta_label && (
-              <span
-                className={cn(buttonVariants({ variant: "default", size: "xl" }), "mt-2 w-fit")}
-              >
-                {hero.cta_label}
-              </span>
-            )}
-          </BannerCard>
+      {/* ── Каталог зліва + права зона (промо / підгрупи+реклама) ─────────
+          Перший екран головної (референс denika.ua). Закрито → список + широкий промо;
+          відкрито (ховер/кнопка) → список + підгрупи + вузька реклама. Логіку перемикання
+          тримає сам <CatalogSidebar> за станом каталогу. */}
+      <CatalogSidebar
+        categories={categories}
+        iconOf={emblemMap(categories)}
+        promoBanner={
+          promoBannerData ? <PromoBanner banner={promoBannerData} locale={locale} /> : null
+        }
+        sideAd={sideBanner ? <SideAd banner={sideBanner} locale={locale} /> : null}
+      />
 
-          {rest.length > 0 && (
-            <div className="grid gap-4">
-              {rest.slice(0, 2).map((banner) => (
-                <BannerCard
-                  key={banner.id}
-                  banner={banner}
-                  locale={locale}
-                  sizes="(max-width: 1024px) 100vw, 33vw"
-                  className="min-h-32 p-4"
-                >
-                  <h2 className="text-h3 banner-text">{banner.title}</h2>
-                  <p className="mt-1 text-sm banner-text-muted">{banner.subtitle}</p>
-                </BannerCard>
-              ))}
-            </div>
-          )}
-        </section>
-      )}
-
-      {/* ── Категорії: плитки з фото товару, без лічильників ──────────── */}
-      <CategoryTiles categories={categories} locale={locale} title={t("home.categories")} />
+      {/* ── Категорії: плитки з фото товару, без лічильників ──────────────
+          ⚠️ `lg:hidden` — плитки й новий <CatalogSidebar> показують ОДНЕ Й ТЕ САМЕ
+          (кореневі категорії), тому вони не співіснують: на десктопі працює сайдбар,
+          на вузьких екранах — плитки (сайдбар там `hidden lg:flex`). Прибирати плитки
+          зовсім не можна: на мобільному вони єдиний вхід у каталог прямо зі сторінки,
+          решта — тільки бургер, а це на клік більше й невидимо для краулера. */}
+      <div className="lg:hidden">
+        <CategoryTiles categories={categories} locale={locale} title={t("home.categories")} />
+      </div>
 
       {/* ── Бренди: вхід у каталог для тих, хто прийшов «за Bosch» ────── */}
       <BrandStrip brands={brands} locale={locale} title={t("home.brands")} />
