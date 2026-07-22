@@ -36,30 +36,42 @@ export function DiscountBadge({
   locale: Locale;
   className?: string;
 }) {
-  const label =
+  const t = useT();
+  const value =
     percent != null
       ? `−${percent}%`
       : amount != null
         ? `−${formatPrice(amount, locale)} ₴`
         : null;
 
-  if (label === null) return null;
+  if (value === null) return null;
 
   return (
     <span
       className={cn(
-        "rounded-md bg-primary px-2 py-0.5 text-xs font-semibold text-primary-foreground tnum",
+        "inline-flex items-center gap-1.5 rounded-md bg-primary px-2.5 py-1 text-xs font-semibold",
+        "text-primary-foreground shadow-sm",
         className,
       )}
     >
-      {label}
+      {/* Слово + число, а не саме число. Замовник просив «наліпку» як на референсі:
+          «−12%» у кутку читається як службова позначка, «Акція −12%» — як привід
+          зупинитись. Відсоток лишається — рішення «відсотки, не гривні» чинне. */}
+      {t("product.saleBadge")}
+      <span className="tnum">{value}</span>
     </span>
   );
 }
 
 /**
- * Бейдж стану товару.
- * «Уцінка» — ОБВОДКА з темним текстом, не колір: вона не має конкурувати зі знижкою.
+ * Наліпка стану товару («Уцінка», «Відновлений», «Б/в»).
+ *
+ * ⚠️ БУЛА ОБВОДКА, СТАЛА ЗАЛИВКА (прохання замовника з референсом). Аргумент «не має
+ * конкурувати зі знижкою» був хибний: уцінка — це не менша за важливістю новина, а
+ * ІНША. Тонка сіра обводка на білій картці її просто ховала.
+ *
+ * Колір — власний токен `--clearance`, а не `--primary`: «Акція» вже синя, і двома
+ * синіми наліпками поспіль ці два різні факти неможливо розрізнити.
  */
 export function ConditionBadge({
   condition,
@@ -74,7 +86,8 @@ export function ConditionBadge({
   return (
     <span
       className={cn(
-        "rounded-md border border-foreground/30 bg-card px-2 py-0.5 text-xs font-semibold text-foreground",
+        "inline-flex items-center rounded-md bg-clearance px-2.5 py-1 text-xs font-semibold",
+        "text-clearance-foreground shadow-sm",
         className,
       )}
     >

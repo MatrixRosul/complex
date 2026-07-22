@@ -58,6 +58,11 @@
   --color-contrast: var(--contrast);
   --color-contrast-foreground: var(--contrast-foreground);
 
+  /* Наліпка «Уцінка» на картці. Окремий токен, а не --primary і не --destructive:
+     див. обґрунтування біля самого значення нижче. */
+  --color-clearance: var(--clearance);
+  --color-clearance-foreground: var(--clearance-foreground);
+
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -182,6 +187,15 @@
   --contrast: #111113;
   --contrast-foreground: #ffffff;
 
+  /* ⚠️ МАЛИНОВИЙ — ЄДИНИЙ КОЛІР ПОЗА БРЕНДОВОЮ СИНЬОЮ ГАМОЮ, і це навмисно.
+     «Акція» вже синя (--primary), тож «Уцінка» тим самим синім злилась би з нею —
+     а це два РІЗНІ факти: акційна ціна і товар із дефектом. Червоний (--destructive)
+     теж не годиться: він означає помилку, і плутати з ним знижку — найдешевший спосіб
+     зіпсувати сигнал. Малиновий читається як «розпродаж» і ні з чим на сайті не
+     конкурує. Референс замовника — рівно ця барва. Білий текст: 6.05:1. */
+  --clearance: #be185d;
+  --clearance-foreground: #ffffff;
+
   /* ⚠️ --border (1.27:1) — свідомо декоративний: роздільники, рамка картки.
      Для обводок КОНТРОЛІВ (input/checkbox/select) — --input (3.42:1),
      як вимагає WCAG 1.4.11. Не використовувати border-border на формах. */
@@ -247,6 +261,9 @@
 
   --contrast: #fafafa; /* інвертується */
   --contrast-foreground: #0a0a0b;
+
+  --clearance: #f0518f; /* світліший: на темному тлі #be185d провалюється. 6.44:1 */
+  --clearance-foreground: #2a0313;
 
   --border: #2a2a2e;
   --input: #63636b; /* 3.32:1 */
