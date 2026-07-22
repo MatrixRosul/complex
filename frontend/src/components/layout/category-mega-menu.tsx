@@ -101,6 +101,11 @@ export function CategoryMegaMenu({
         aria-expanded={open}
         aria-haspopup="true"
         onClick={toggle}
+        // ⚠️ БІЛА, А НЕ АКЦЕНТНА. Ця кнопка живе ЛИШЕ в шапці, а шапка тепер сама
+        // темно-синя (#0E3F68). Акцентний `bg-primary` (#15558F) на ній давав контраст
+        // 1.44:1 — кнопку майже не було видно (порахував; UI-мінімум 3:1). Біла на
+        // синьому — 11:1, і синій текст на білій — 10.88:1.
+        className="bg-white text-brand-deep hover:bg-white/90 aria-expanded:bg-white/90"
       >
         {/* Відкрито → сітка міняється на ✕: кнопка і відкриває, і закриває (референс denika). */}
         {open ? <X className="size-4" /> : <LayoutGrid className="size-4" />}
