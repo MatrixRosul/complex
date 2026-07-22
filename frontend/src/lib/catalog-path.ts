@@ -94,3 +94,15 @@ export async function resolveCategoryPathById(
   const tree = await api.getCategoryTree(lang);
   return findSlugPath(tree, externalId);
 }
+
+/**
+ * Те саме по ВЖЕ отриманому дереву, без власного запиту.
+ *
+ * ⚠️ Потрібно рядку розділів під шапкою: він приходить ПЛОСКИМ списком (замовник може
+ * відмітити й підкатегорію), а посилання на підкатегорію мусить бути повним —
+ * `/catalog/vbudovana/dukhovi-shafy`, рівно як у мегаменю. Хедер дерево вже має на руках,
+ * тож окремий async-виклик тут був би зайвим раундтріпом на кожній сторінці сайту.
+ */
+export function slugPathIn(tree: CategoryOut[], externalId: string): string[] | null {
+  return findSlugPath(tree, externalId);
+}

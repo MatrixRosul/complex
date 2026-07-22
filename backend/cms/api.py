@@ -17,7 +17,8 @@ from ninja.errors import HttpError
 
 from catalog.services.lang import normalize_lang, tr
 from cms.models import Banner, MenuItem, NewsPost, StaticPage
-from cms.schemas import BannerOut, MenuItemOut, NewsPostOut, StaticPageOut
+from cms.schemas import BannerOut, ContactsOut, MenuItemOut, NewsPostOut, StaticPageOut
+from core.models import SiteSettings, WorkingHours
 
 router = Router(tags=["cms"])
 
@@ -171,3 +172,71 @@ def menu(request: HttpRequest, lang: str = "uk", zone: str = ""):
             }
         )
     return result
+
+
+# ---------------------------------------------------------------------------
+# Контакти
+# ---------------------------------------------------------------------------
+# Короткі назви днів. У моделі вони повні («Понеділок») і тільки українською, а в шапку
+# треба «ПН – ПТ» і обома мовами — тому словник тут, а не в choices моделі.
+_WEEKDAY_SHORT: dict[str, tuple[str, ...]] = {
+    "uk": ("ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ", "НД"),
+    "ru": ("ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ", "ВС"),
+}
+_DAY_OFF: dict[str, str] = {"uk": "вихідний", "ru": "выходной"}
+
+
+def _format_hours(rows: list[Any], lang: str) -> list[dict[str, str]]:
+    """7 рядків «день → години» → «ПН – ПТ 09:00 – 20:00 · СБ – НД 10:00 – 17:00».
+
+    ⚠️ Групуємо ПІДРЯД ІДУЧІ дні з однаковими годинами, а не всі однакові скопом. Інакше
+       графік «ПН–ПТ 9–20, СБ 10–17, НД 9–20» злився б у брехливе «ПН–ПТ, НД», де діапазон
+       перескакує через суботу. Дірка в тижні (день без рядка в БД) теж рве групу.
+    """
+    short = _WEEKDAY_SHORT.get(lang, _WEEKDAY_SHORT["uk"])
+    day_off = _DAY_OFF.get(lang, _DAY_OFF["uk"])
+
+    def label(row: Any) -> str:
+        if row.is_day_off or row.open_time is None or row.close_time is None:
+            return day_off
+        return f"{row.open_time:%H:%M} – {row.close_time:%H:%M}"
+
+    groups: list[tuple[int, int, str]] = []  # (перший день, останній день, години)
+    for row in sorted(rows, key=lambda r: r.weekday):
+        text = label(row)
+        if groups and groups[-1][2] == text and groups[-1][1] == row.weekday - 1:
+            first, _, _ = groups[-1]
+            groups[-1] = (first, row.weekday, text)
+        else:
+            groups.append((row.weekday, row.weekday, text))
+
+    return [
+        {
+            "days": short[first] if first == last else f"{short[first]} – {short[last]}",
+            "time": text,
+        }
+        for first, last, text in groups
+    ]
+
+
+@router.get("/contacts", response=ContactsOut, summary="Контакти")
+def contacts(request: HttpRequest, lang: str = "uk"):
+    """Телефони, e-mail, адреса і графік — З АДМІНКИ (Налаштування сайту + Графік роботи).
+
+    🔴 Цього ендпоінта не було, і фронт роками показував у шапці ЗАХАРДКОДЖЕНІ телефони з
+       `frontend/src/lib/api/types.ts`-сусіда `lib/site.ts::FALLBACK_CONTACTS`. Тобто поля в
+       адмінці існували, замовник міг їх заповнити — і на сайті не мінялось нічого.
+
+    ⚠️ Фолбек на константу у фронті ЛИШАЄТЬСЯ, але тепер він ловить лише мережеву помилку
+       (хедер стоїть вище за error.tsx). Порожньо в адмінці = порожньо на сайті: адмінка —
+       джерело правди, і тихо підставляти інший телефон замість прибраного не можна.
+    """
+    lang = normalize_lang(lang)
+    settings = SiteSettings.get_solo()
+
+    return {
+        "phones": [p for p in (settings.phones or []) if p],
+        "email": settings.email or "",
+        "address": tr(settings, "address", lang) or "",
+        "working_hours": _format_hours(list(WorkingHours.objects.all()), lang),
+    }

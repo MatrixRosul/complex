@@ -2970,6 +2970,9 @@ class Command(BaseCommand):
             tokens.append(f"cond:{product.condition}")
         if product.installment_available:
             tokens.append("installment:1")
+        # Дзеркало sync/services.py::rebuild_product_denorm — «Акції» = є стара ціна.
+        if product.old_price is not None:
+            tokens.append("sale:1")
 
         Product.objects.filter(pk=product.pk).update(
             specs_json_uk=sorted(specs_uk, key=lambda x: (x["gs"], x["s"])),

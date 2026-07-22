@@ -48,3 +48,21 @@ class MenuItemOut(Schema):
     url: str = ""
     block: str = ""  # zone: header | footer | mobile
     icon: str = ""
+
+
+class WorkingHoursOut(Schema):
+    days: str  # «ПН – ПТ» / «СБ»
+    time: str  # «09:00 – 20:00» / «вихідний»
+
+
+class ContactsOut(Schema):
+    """Контакти шапки, підвалу і сторінки «Контакти».
+
+    ⚠️ Форма 1-в-1 з `frontend/src/lib/api/types.ts::ContactsOut` — фронт цей ендпоінт
+    викликає вже давно (`api.getContacts`), просто досі отримував 404 і падав на константу.
+    """
+
+    phones: list[str] = []
+    email: str = ""
+    address: str = ""
+    working_hours: list[WorkingHoursOut] = []

@@ -5,61 +5,59 @@ import { usePathname } from "next/navigation";
 
 import { cn } from "@/lib/utils";
 
-import { localePath, type Locale } from "@/i18n/config";
-import type { CategoryOut } from "@/lib/api/types";
-
 /**
- * РЯДОК КАТЕГОРІЙ ПІД ШАПКОЮ — швидкий вхід у розділи без відкривання каталогу.
+ * РЯДОК РОЗДІЛІВ ПІД ШАПКОЮ — РІВНО ТЕ, ЩО ЗАМОВНИК ВІДМІТИВ В АДМІНЦІ.
  *
- * ⚠️ Категорії беруться з БД, а НЕ хардкодяться списком. Замовник назвав приблизний
- * перелік («Аудіо-відео, Вбудована, Велика побутова…»), але вписати його рядками
- * означало б, що доданий в адмінці розділ сюди не потрапить, а перейменований —
- * лишиться зі старою назвою. Тут той самий масив, що й у меню каталогу.
+ * ⚠️ БУЛО: сюди автоматично падали ВСІ кореневі категорії. Замовник назвав це зайвим —
+ * дерево вже є і в кнопці «Каталог», і в сайдбарі, тож рядок дублював навігацію замість
+ * того, щоб вести до того, що треба продати. Тепер це кураторський список: галочка
+ * «Показувати в рядку під шапкою» в картці категорії (Категорії → список, колонка
+ * редагується прямо там).
  *
- * ⚠️ ВИДНО НА ВСІХ ШИРИНАХ — і це виправлення, а не недогляд. Спочатку рядок стояв
- * під `lg:`, і виходила діра: на десктопі категорії показувались ДВІЧІ (тут і в
- * <CatalogSidebar>), а на телефоні — ЖОДНОГО разу, бо плитки категорій тимчасово
- * вимкнені, а сайдбар теж лише з lg. Тобто на одному брейкпоінті все, на іншому
- * нічого — замовник це й побачив як «то так, то так».
+ * ⚠️ ЖОДНОГО ХАРДКОДУ НАЗВ. Замовник назвав «Акції», «Уцінений товар» і (пізніше)
+ * «Комплекти» — але це ЗМІСТ, а не структура. Вписати їх сюди рядками означало б, що
+ * перейменована в адмінці категорія лишиться зі старою назвою, а знята з галочки —
+ * висітиме далі. Тут приходить готовий список з API.
  *
- * Тепер це ЄДИНИЙ вхід у розділи, який є завжди: на вузькому екрані рядок
- * горизонтально прокручується (`overflow-x-auto`), на широкому просто вміщається.
- * Прокрутка схована стилями нижче — смуга під шапкою виглядала б як помилка.
+ * ⚠️ ПОРОЖНЬО → РЯДКА НЕМАЄ ВЗАГАЛІ. Це не деградація, а те саме правило, що й скрізь у
+ * каталозі: порожня категорія не показується ніде. Тобто відмічена, але поки безтоварна
+ * «Акції» не стане посиланням у глухий кут на найпомітнішому місці сайту — вона просто
+ * з'явиться сама, щойно в ній будуть товари.
+ *
+ * ⚠️ ВИДНО НА ВСІХ ШИРИНАХ. На вузькому екрані рядок горизонтально прокручується
+ * (`overflow-x-auto`); смуга прокрутки схована — під шапкою вона читається як зламана
+ * верстка, хоча скрол тут штатний.
  *
  * ⚠️ АКТИВНИЙ РОЗДІЛ ВИДІЛЕНИЙ. Замовниця: «щоб якщо вибране щось із цього, то
  * підсвічувалось жирнішим текстом». Порівнюємо з ПОЧАТКОМ шляху, а не з рівністю:
  * усередині «Вбудована / Духові шафи» розділ верхнього рівня теж має лишатись
  * підсвіченим — інакше підсвітка гасне на першому ж кроці вглиб і виглядає як збій.
- * Заради цього компонент став клієнтським (`usePathname`).
+ * Заради цього компонент клієнтський (`usePathname`).
  */
-export function CategoryQuickNav({
-  categories,
-  locale,
-}: {
-  categories: CategoryOut[];
-  locale: Locale;
-}) {
+export type QuickNavItem = {
+  id: number;
+  name: string;
+  /** Готовий канонічний шлях — його будує серверний хедер по дереву категорій. */
+  href: string;
+};
+
+export function CategoryQuickNav({ items }: { items: QuickNavItem[] }) {
   const pathname = usePathname();
 
-  if (categories.length === 0) return null;
+  if (items.length === 0) return null;
 
   return (
     <nav aria-label="Розділи каталогу" className="border-t border-border">
-      <div
-        // `[scrollbar-width:none]` + webkit-правило: горизонтальна смуга під шапкою
-        // читається як зламана верстка, хоча скрол тут штатний.
-        className="container-complex flex h-11 items-center gap-5 overflow-x-auto text-sm [-ms-overflow-style:none] [scrollbar-width:none] lg:gap-6 [&::-webkit-scrollbar]:hidden"
-      >
-        {categories.map((category) => {
-          const href = localePath(locale, `/catalog/${category.slug}`);
+      <div className="container-complex flex h-11 items-center gap-5 overflow-x-auto text-sm [-ms-overflow-style:none] [scrollbar-width:none] lg:gap-6 [&::-webkit-scrollbar]:hidden">
+        {items.map((item) => {
           // `startsWith` + межа сегмента: «/catalog/velyka» не має підсвічувати
           // «/catalog/velyka-tehnika», якщо колись з'явиться схожий slug.
-          const isActive = pathname === href || pathname.startsWith(`${href}/`);
+          const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
 
           return (
             <Link
-              key={category.id}
-              href={href}
+              key={item.id}
+              href={item.href}
               aria-current={isActive ? "page" : undefined}
               className={cn(
                 "whitespace-nowrap transition-colors",
@@ -68,7 +66,7 @@ export function CategoryQuickNav({
                   : "font-medium text-muted-foreground hover:text-foreground",
               )}
             >
-              {category.name}
+              {item.name}
             </Link>
           );
         })}

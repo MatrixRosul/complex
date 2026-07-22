@@ -81,6 +81,7 @@ class CategoryTreeOut(Schema):
     products_count: int
     icon_url: str | None = None
     image_url: str | None = None
+    show_in_quick_nav: bool = False
     children: list[CategoryTreeOut] = []
 
 

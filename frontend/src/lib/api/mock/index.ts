@@ -359,6 +359,14 @@ export const mockApi: ComplexApi = {
     return buildCategoryTree(lang);
   },
 
+  async getQuickNav(lang) {
+    await delay();
+    // У моках галочок ніхто не ставив, тому рядок під шапкою тут порожній — і це чесно:
+    // на живому API він порожній рівно доти, доки замовник не відмітить категорії.
+    void lang;
+    return [];
+  },
+
   async getCatalog(query: CatalogQuery, lang): Promise<CatalogResponse> {
     await delay();
 

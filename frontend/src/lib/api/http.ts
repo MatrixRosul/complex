@@ -267,6 +267,7 @@ function adaptCategory(c: WireCategoryTree): CategoryOut {
     products_count: c.products_count,
     icon_url: mediaUrl(c.icon_url),
     image_url: mediaUrl(c.image_url),
+    show_in_quick_nav: c.show_in_quick_nav ?? false,
     children: (c.children ?? []).map(adaptCategory),
   };
 }
@@ -391,6 +392,17 @@ export const httpApi: ComplexApi = {
       revalidate: TTL.tree,
     });
     return tree.map(adaptCategory);
+  },
+
+  async getQuickNav(lang) {
+    // Той самий кеш-тег, що й у дерева: обидва списки будуються з одного джерела на
+    // бекенді, тож і протухати мають разом. Окремий тег дав би рядок під шапкою, який
+    // ще годину показує прибрану категорію.
+    const items = await request<WireCategoryTree[]>(`/categories/quick-nav?lang=${lang}`, {
+      tags: [`categories:${lang}`],
+      revalidate: TTL.tree,
+    });
+    return items.map(adaptCategory);
   },
 
   async getCatalog(query, lang) {

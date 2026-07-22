@@ -124,6 +124,7 @@ export function buildCategoryTree(lang: ApiLang): CategoryOut[] {
     products_count: productsCountIn(c.id),
     icon_url: null,
     image_url: null,
+    show_in_quick_nav: false,
     children: rawCategories.filter((x) => x.parent_id === c.id).map(toOut),
   });
 

@@ -960,15 +960,25 @@ class CategoryAdmin(ModelAdmin, TabbedTranslationAdmin):
         "sort_order",
         "is_active",
         "show_in_megamenu",
+        "show_in_quick_nav",
         "hotline_enabled_default",
         "hotline_category",
     )
     list_display_links = ("tree_name",)
-    list_editable = ("sort_order", "is_active", "show_in_megamenu", "hotline_enabled_default")
+    # ⚠️ `show_in_quick_nav` — саме тут, у СПИСКУ: рядок під шапкою збирають, порівнюючи
+    #   категорії між собою, а не відкриваючи кожну по черзі.
+    list_editable = (
+        "sort_order",
+        "is_active",
+        "show_in_megamenu",
+        "show_in_quick_nav",
+        "hotline_enabled_default",
+    )
     list_select_related = ("parent", "hotline_category")
     list_filter = (
         ("is_active", BooleanRadioFilter),
         ("show_in_megamenu", BooleanRadioFilter),
+        ("show_in_quick_nav", BooleanRadioFilter),
         ("hotline_enabled_default", BooleanRadioFilter),
         ("parent", RelatedDropdownFilter),
     )
@@ -1017,6 +1027,7 @@ class CategoryAdmin(ModelAdmin, TabbedTranslationAdmin):
                     "sort_order",
                     "is_active",
                     "show_in_megamenu",
+                    "show_in_quick_nav",
                     "description",
                 )
             },
@@ -1039,7 +1050,11 @@ class CategoryAdmin(ModelAdmin, TabbedTranslationAdmin):
                 "fields": ("virtual_tokens",),
                 "description": "Непорожньо → категорія не має власних товарів через FK, а її "
                 "лістинг збирається за токенами. «Уцінка» = <code>cond:2</code>, "
-                "«Акції» = <code>promo:1</code>. Нуль дублювання товарів у дереві.",
+                "«Акції» = <code>sale:1</code> (товари, у яких заповнена стара ціна). "
+                "Нуль дублювання товарів у дереві.<br>"
+                "🔴 Тут раніше було написано <code>promo:1</code> — такого токена НІКОЛИ не "
+                "існувало, і категорія з ним мовчки лишалась порожньою. Правильний — "
+                "<code>sale:1</code>.",
             },
         ),
         (

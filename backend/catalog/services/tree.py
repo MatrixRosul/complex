@@ -64,6 +64,7 @@ __all__ = [
     "get_category_tree",
     "icon_url",
     "image_url",
+    "quick_nav",
     "resolve_category",
     "visible_children",
 ]
@@ -215,6 +216,7 @@ def _serialize(
         # Власна плитка ЗАВЖДИ виграє: щойно замовник заллє картинку в адмінці, фолбек на фото
         # товару мовчки поступиться їй місцем — без жодної правки коду.
         "image_url": image_url(category) or tiles.get(category.pk),
+        "show_in_quick_nav": category.show_in_quick_nav,
         "children": [],
     }
 
@@ -263,6 +265,32 @@ def get_category_tree(lang: str, *, use_cache: bool = True) -> list[dict[str, An
     tree = build_category_tree(lang)
     cache.set(key, tree, TREE_TTL)
     return tree
+
+
+def quick_nav(lang: str) -> list[dict[str, Any]]:
+    """Рядок розділів під шапкою — РІВНО ті категорії, які замовник відмітив в адмінці.
+
+    ⚠️ БЕРЕТЬСЯ З ТОГО САМОГО КЕШОВАНОГО ДЕРЕВА, а не окремим запитом у БД. Це не оптимізація,
+       а гарантія узгодженості: правило «порожня категорія не показується НІДЕ» живе в
+       `build_category_tree`, і другий запит його б обійшов — відмічена, але порожня «Акції»
+       стала б посиланням у глухий кут саме на найпомітнішому місці сайту. Плюс лічильник і
+       переклад назви приходять задарма, ті самі, що в мегаменю.
+
+    ⚠️ ОБХІД ПО ВСІХ РІВНЯХ, а не лише по коренях: замовник має право винести в рядок і
+       підкатегорію («Духові шафи»), і віртуальну («Уцінка» = `cond:2`, «Акції» = `sale:1`).
+       Порядок — DFS по вже відсортованому дереву, тобто «як у каталозі», а не за алфавітом
+       чи кількістю товарів.
+    """
+    result: list[dict[str, Any]] = []
+
+    def walk(nodes: list[dict[str, Any]]) -> None:
+        for node in nodes:
+            if node.get("show_in_quick_nav"):
+                result.append(node)
+            walk(node["children"])
+
+    walk(get_category_tree(lang))
+    return result
 
 
 def _find(nodes: list[dict[str, Any]], category_id: int) -> dict[str, Any] | None:

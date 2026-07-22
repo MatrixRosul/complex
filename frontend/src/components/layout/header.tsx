@@ -9,6 +9,7 @@ import { FALLBACK_CONTACTS } from "@/lib/site";
 import { getT } from "@/i18n/dictionary";
 import { localePath, localeToApiLang, type Locale } from "@/i18n/config";
 import { formatPhone } from "@/lib/format";
+import { slugPathIn } from "@/lib/catalog-path";
 import type { MenuItemOut } from "@/lib/api/types";
 import { SideAd } from "@/components/cms/banner-slots";
 
@@ -21,22 +22,6 @@ import { SearchBar } from "./search-bar";
 import { ThemeToggle } from "./theme-toggle";
 
 /**
- * Пункти ЦЕНТРУ верхньої смуги — порядок замовлений замовницею дослівно:
- * «Доставка та оплата», «Кредит або розстрочка», «Гарантія», «Контакти».
- *
- * ⚠️ Це ключі СТАТИЧНИХ СТОРІНОК (`StaticPage.key`), а не готові посилання, і список
- * тут — лише ПОРЯДОК. Сам пункт береться з /cms/menu (див. `api.getMenuItems`, який
- * добудовує меню зі списку реальних сторінок), тому:
- *   • назва приходить перекладена з адмінки — хардкодити її тут не можна;
- *   • якщо сторінки в БД НЕМАЄ — пункт просто не рендериться, і посилання в нікуди
- *     не з'являється.
- *
- * 🔴 Станом на 20.07.2026 у БД немає сторінки `credit` — «Кредит або розстрочка»
- *    в смузі не показується, доки замовник її не заведе в адмінці. Це не баг фронта.
- */
-const TOPBAR_PAGE_KEYS = ["payment-delivery", "credit", "warranty", "contacts"];
-
-/**
  * Хедер — серверний компонент: дерево категорій, меню й контакти тягнуться на сервері
  * і не роздувають клієнтський бандл. Інтерактив винесений у дочірні "use client".
  */
@@ -46,8 +31,11 @@ export async function Header({ locale }: { locale: Locale }) {
 
   // ⚠️ safe(): хедер — у layout, ВИЩЕ за error.tsx. Якщо бекенд моргнув, сайт має
   // лишитись клікабельним (лого, пошук, кошик), а не впасти цілком у global-error.
-  const [categories, menuItems, contacts, banners] = await Promise.all([
+  const [categories, quickNav, menuItems, contacts, banners] = await Promise.all([
     safe(api.getCategoryTree(lang), []),
+    // Рядок під шапкою — НЕ підмножина дерева: замовник відмічає категорії галочкою в
+    // адмінці, і серед них бувають підкатегорії та віртуальні («Акції», «Уцінка»).
+    safe(api.getQuickNav(lang), []),
     safe(api.getMenuItems(lang), []),
     safe(api.getContacts(lang), FALLBACK_CONTACTS(lang)),
     // Банери потрібні хедеру заради вузької реклами в dropdown каталогу (home_side):
@@ -64,10 +52,34 @@ export async function Header({ locale }: { locale: Locale }) {
   // компоненти не тягли за собою ні дерево категорій, ні мапінг.
   const iconOf = emblemMap(categories);
 
-  // Порядок — з TOPBAR_PAGE_KEYS, наявність — з реальних пунктів меню.
-  const topbarLinks = TOPBAR_PAGE_KEYS.map((key) =>
-    menuItems.find((item) => item.url === `/page/${key}`),
-  ).filter((item): item is MenuItemOut => Boolean(item));
+  /**
+   * ЦЕНТР ВЕРХНЬОЇ СМУГИ — ЦІЛКОМ З АДМІНКИ (зона «Верхнє меню», порядок — поле «Порядок»).
+   *
+   * 🔴 Було: захардкоджений список із чотирьох ключів сторінок, по якому фронт ФІЛЬТРУВАВ
+   *    пункти меню. Замовник додавав п'ятий пункт в адмінці — і той не з'являвся ніде,
+   *    без жодної помилки. Саме це він і спитав («ще два пункти зверху додаються?»).
+   *    Тепер список тут не живе взагалі: що заведено в зоні header — те й видно.
+   *
+   * ⚠️ Пункти зі ЩЕ порожнім `url` пропускаємо: у моделі це «пункт-заголовок розділу»
+   *    (він осмислений у бургер-меню, але в горизонтальній смузі був би мертвим текстом).
+   */
+  const topbarLinks = menuItems.filter(
+    (item): item is MenuItemOut => item.block === "header" && Boolean(item.url),
+  );
+
+  // Рядок під шапкою приходить ПЛОСКИМ (там можуть бути й підкатегорії), а посилання на
+  // підкатегорію мусить бути повним — `/catalog/vbudovana/dukhovi-shafy`, як у мегаменю.
+  // Шлях будуємо по дереву, яке хедер уже отримав; фолбек на власний slug — на випадок,
+  // коли вузла в дереві чомусь немає (тоді резолвер каталогу все одно знайде його по
+  // останньому сегменту).
+  const quickNavItems = quickNav.map((category) => ({
+    id: category.id,
+    name: category.name,
+    href: localePath(
+      locale,
+      `/catalog/${(slugPathIn(categories, category.external_id) ?? [category.slug]).join("/")}`,
+    ),
+  }));
 
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur">
@@ -76,7 +88,10 @@ export async function Header({ locale }: { locale: Locale }) {
           раніше, прибраний свідомо: смуга тепер тримає три зони, і четверта не влазить
           без тісноти. Графік нікуди не подівся — він у футері й у бургер-меню. */}
       <div className="hidden bg-brand-deep text-brand-deep-foreground lg:block">
-        <div className="container-complex flex h-11 items-center justify-between gap-6 text-sm">
+        {/* 1.05rem = 16.8 px — рівно +20% до попереднього text-sm (14 px), на прохання
+            замовника. Іконки й висота смуги підняті пропорційно, інакше текст починає
+            тиснути на межі смуги, а 16-піксельні іконки поруч виглядають дрібними. */}
+        <div className="container-complex flex h-12 items-center justify-between gap-6 text-[1.05rem]">
           {/* Статична адреса магазину (INPUTS §1), а НЕ вибір міста: магазин один.
               Поруч — графік: він у контактах уже є, а покупцю важливо бачити «зараз
               відчинено?» до того, як він набере номер. Крапка — просто маркер, НЕ
@@ -84,13 +99,17 @@ export async function Header({ locale }: { locale: Locale }) {
               а вигадувати зелений вогник, який світить у неділю о 23:00, гірше,
               ніж не показувати його взагалі. */}
           <div className="flex shrink-0 items-center gap-4">
-            <span className="flex items-center gap-1.5 font-medium">
-              <MapPin aria-hidden className="size-4" />
-              {t("topbar.location")}
-            </span>
+            {/* Адреса — з адмінки (Налаштування сайту → Адреса магазину), а не зі словника
+                i18n. Було: захардкоджене «Ужгород», яке замовник не міг змінити ніде. */}
+            {contacts.address && (
+              <span className="flex items-center gap-1.5 font-medium">
+                <MapPin aria-hidden className="size-[1.2rem]" />
+                {contacts.address}
+              </span>
+            )}
             {contacts.working_hours.length > 0 && (
               <span className="hidden items-center gap-1.5 text-white/85 xl:flex">
-                <Clock aria-hidden className="size-4" />
+                <Clock aria-hidden className="size-[1.2rem]" />
                 {contacts.working_hours.map((wh) => `${wh.days} ${wh.time}`).join(" · ")}
               </span>
             )}
@@ -142,7 +161,7 @@ export async function Header({ locale }: { locale: Locale }) {
         >
           {/*
            * ДВА ФАЙЛИ, А НЕ ФІЛЬТР. Раніше тут стояв один логотип з `dark:invert` — це
-           * працювало, поки лого було чорним. Новий фірмовий знак СИНІЙ (#2E5F87), а
+           * працювало, поки лого було чорним. Новий фірмовий знак СИНІЙ (#144772), а
            * invert синього дає брудно-жовтий, тобто в темній темі бренд ламався б.
            * Заміна кольору фільтром для кольорового лого неможлива в принципі, тому
            * світлу версію намальовано окремим файлом.
@@ -156,7 +175,7 @@ export async function Header({ locale }: { locale: Locale }) {
             src="/images/logo.png"
             alt={t("brand.name")}
             width={720}
-            height={229}
+            height={222}
             priority
             className="h-8 w-auto md:h-9 dark:hidden"
           />
@@ -165,7 +184,7 @@ export async function Header({ locale }: { locale: Locale }) {
             alt=""
             aria-hidden
             width={720}
-            height={229}
+            height={222}
             priority
             className="hidden h-8 w-auto md:h-9 dark:block"
           />
@@ -182,8 +201,8 @@ export async function Header({ locale }: { locale: Locale }) {
         </div>
       </div>
 
-      {/* ── Рядок розділів: швидкий вхід у категорію без відкривання каталогу ── */}
-      <CategoryQuickNav categories={categories} locale={locale} />
+      {/* ── Рядок розділів: те, що замовник відмітив в адмінці (порожньо → рядка немає) ── */}
+      <CategoryQuickNav items={quickNavItems} />
 
       {/* Пошук на мобільному — окремим рядком, бо в один рядок не влазить. */}
       <div className="container-complex pb-3 md:hidden">

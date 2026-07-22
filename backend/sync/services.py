@@ -3053,6 +3053,14 @@ def rebuild_denorm(product_ids: Sequence[int]) -> int:
         tokens.append(f"cond:{product.condition}")
         if product.installment_available:
             tokens.append("installment:1")
+        # ⚠️ `sale:1` — ЗНИЖКА, і рівно за тим самим правилом, що й блок «Акції» на головній
+        #   (`services/collections.py`: sale = old_price IS NOT NULL). Без цього токена
+        #   віртуальна категорія «Акції» технічно неможлива: адмінка роками радила токен
+        #   `promo:1`, якого НІХТО НІКОЛИ не будував, тож замовник створив би категорію і
+        #   мовчки отримав нуль товарів. CheckConstraint prod_old_price_gt_price гарантує
+        #   old_price > price, тобто фейкової знижки тут бути не може за побудовою.
+        if product.old_price is not None:
+            tokens.append("sale:1")
 
         main = next(
             (i for i in product.images.all() if i.is_main),

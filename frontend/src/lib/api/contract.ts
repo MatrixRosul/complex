@@ -34,6 +34,16 @@ import type {
 export interface ComplexApi {
   // ── Каталог ────────────────────────────────────────────────────────────
   getCategoryTree(lang: ApiLang): Promise<CategoryOut[]>;
+
+  /**
+   * Рядок розділів під шапкою — РІВНО ті категорії, які замовник відмітив в адмінці
+   * галочкою «Показувати в рядку під шапкою». Плоский список, порядок уже правильний.
+   *
+   * ⚠️ Окремий виклик, а не фільтр по `getCategoryTree`: відмітити можна й ПІДкатегорію,
+   * тобто фронту довелося б рекурсивно обходити дерево на кожному рендері шапки — на
+   * кожній сторінці сайту. Обхід робить сервер один раз на нагрів кешу.
+   */
+  getQuickNav(lang: ApiLang): Promise<CategoryOut[]>;
   getCatalog(query: CatalogQuery, lang: ApiLang): Promise<CatalogResponse>;
   getProduct(id: number, lang: ApiLang): Promise<ProductDetail | null>;
   getRelatedProducts(id: number, lang: ApiLang): Promise<ProductListItem[]>;

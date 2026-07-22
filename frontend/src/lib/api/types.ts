@@ -97,6 +97,8 @@ export type CategoryOut = {
   products_count: number;
   icon_url: string | null;
   image_url: string | null;
+  /** Галочка «Показувати в рядку під шапкою» в адмінці. */
+  show_in_quick_nav?: boolean;
   /** Гілка дерева. У мегаменю приходить одразу з дітьми. */
   children?: CategoryOut[];
 };

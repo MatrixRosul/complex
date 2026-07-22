@@ -43,6 +43,7 @@ export type WireCategoryTree = {
   products_count: number;
   icon_url: string | null;
   image_url: string | null;
+  show_in_quick_nav: boolean;
   children: WireCategoryTree[];
 };
 
