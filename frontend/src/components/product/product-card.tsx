@@ -72,7 +72,12 @@ export function ProductCard({
   return (
     <div
       className={cn(
-        "group relative flex flex-col rounded-lg border border-border bg-card p-3",
+        // `@container` — щоб верстка всередині реагувала на ширину САМОЇ КАРТКИ.
+        // ⚠️ Без цього ламалось так: брейкпоінт `sm:` міряє ЕКРАН, а не картку. На
+        // широкому моніторі сітка дає 5–6 колонок по ~230 px, але `sm:` уже спрацював —
+        // ціна й кнопка ставали в рядок, довга кнопка («Повідомити про наявність»)
+        // виштовхувала ціну ЗА МЕЖІ картки. Тепер вирішує ширина картки (див. нижче).
+        "group @container relative flex flex-col rounded-lg border border-border bg-card p-3",
         // Без тіні у спокої. Підняття на hover — фото НЕ зумиться:
         // у побутовій техніці зум фото не додає інформації.
         "transition-all duration-150 ease-out hover:-translate-y-0.5 hover:border-transparent hover:shadow-lg",
@@ -141,25 +146,32 @@ export function ProductCard({
           Ціна і дія стоять поруч, а не одне під одним: погляд не мусить стрибати
           через усю картку, щоб зіставити «скільки це коштує» і «як це купити».
 
-          ⚠️ В один рядок — ЛИШЕ від sm. На мобільній сітці в дві колонки картка
-          вужча за 160 px: «36 109 ₴» і «Купити» там не вміщаються поруч і ламають
-          одне одного. Тому знизу — стовпчик, від sm — рядок.
+          ⚠️ В РЯДОК — ЗА ШИРИНОЮ КАРТКИ (`@[13rem]`), А НЕ ЕКРАНА. Раніше стояло `sm:`,
+          тобто брейкпоінт екрана: на широкому моніторі сітка дає 5–6 вузьких колонок,
+          `sm:` уже спрацював — і в картці ~230 px довга кнопка «Повідомити про наявність»
+          виштовхувала ціну ЗА МЕЖІ картки (замовник це й побачив). Тепер поки картка
+          вузька — стовпчик, від 13rem — рядок, незалежно від розміру вікна.
+
+          ⚠️ `flex-wrap` теж не косметика. Кнопка Button має власний `shrink-0`, тож
+          стиснути її не можна: з довгим підписом («Повідомити про наявність» — 204 px
+          у картці 254 px) ціну виштовхувало ЗА рамку. З переносом вона просто спадає
+          на рядок нижче — усередині картки.
 
           Немає в наявності → secondary + «Повідомити про наявність», але ціна
           лишається на місці: людина має бачити, скільки це коштує. */}
-      <div className="mt-2 flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div className="mt-2 flex flex-col items-stretch gap-2 @[13rem]:flex-row @[13rem]:flex-wrap @[13rem]:items-center @[13rem]:justify-between">
         <Price
           price={product.price}
           oldPrice={product.old_price}
           locale={locale}
           size="lg"
-          className="order-1 sm:order-2 sm:text-right"
+          className="order-1 @[13rem]:order-2 @[13rem]:text-right"
         />
 
         <Button
           variant={isOut ? "secondary" : "default"}
           size="lg"
-          className="order-2 w-full sm:order-1 sm:w-auto"
+          className="order-2 w-full @[13rem]:order-1 @[13rem]:w-auto"
           /**
            * ⚠️ Клік відкриває панель кошика, а не показує тост.
            *
