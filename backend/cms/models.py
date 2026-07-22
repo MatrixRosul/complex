@@ -78,7 +78,15 @@ class Banner(TimeStampedModel):
     # Відносний шлях ("/uk/c/5609730/kholodylnyky") або абсолютний URL. Не URLField —
     # внутрішні посилання відносні, а URLField їх не пропустить.
     category = models.ForeignKey(
-        "catalog.Category", null=True, blank=True, on_delete=models.CASCADE
+        "catalog.Category",
+        verbose_name="Категорія",
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        help_text=(
+            "Потрібна ТІЛЬКИ для розміщення «Банер над категорією». "
+            "Для банерів головної залиште порожнім."
+        ),
     )
     # Для placement=CATEGORY_TOP. CASCADE: банер категорії без категорії — сміття.
 

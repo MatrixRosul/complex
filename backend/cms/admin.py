@@ -33,6 +33,7 @@ from unfold.contrib.filters.admin import ChoicesDropdownFilter, RangeDateTimeFil
 from unfold.contrib.forms.widgets import WysiwygWidget
 from unfold.decorators import display
 
+from cms.admin_previews import SLOT_COLORS, layout_preview, placement_badge
 from cms.models import Banner, EditorImage, MenuItem, NewsPost, PickupPoint, StaticPage
 
 
@@ -138,6 +139,7 @@ class BannerAdmin(ModelAdmin, TabbedTranslationAdmin):
         "preview",
         "title",
         "placement",
+        "supported_badge",
         "sort_order",
         "period",
         "live_badge",
@@ -148,9 +150,26 @@ class BannerAdmin(ModelAdmin, TabbedTranslationAdmin):
     list_filter = (("placement", ChoicesDropdownFilter), "is_active")
     search_fields = ("title", "subtitle")
     ordering = ("placement", "sort_order", "id")
+    readonly_fields = ("layout_preview",)
 
     fieldsets = (
-        ("Розміщення", {"fields": ("placement", "category", "sort_order", "is_active")}),
+        (
+            "Розміщення",
+            {
+                "description": (
+                    "Оберіть розміщення — схема нижче покаже, у яке саме місце сайту "
+                    "потрапить банер. ⚠️ У кожному місці показується РІВНО ОДИН банер — "
+                    "той, у якого менший «Порядок». Решта чекають своєї черги."
+                ),
+                "fields": (
+                    "placement",
+                    "layout_preview",
+                    "category",
+                    "sort_order",
+                    "is_active",
+                ),
+            },
+        ),
         ("Вміст", {"fields": ("title", "subtitle", "image", "image_mobile", "link_url")}),
         (
             "Період показу",
@@ -164,6 +183,24 @@ class BannerAdmin(ModelAdmin, TabbedTranslationAdmin):
     @display(description="Прев'ю")
     def preview(self, obj: Banner) -> str:
         return image_preview(obj.image, height=40)
+
+    @display(description="Де це на сайті")
+    def layout_preview(self, obj: Banner | None) -> str:
+        """Схема сторінки з підсвіченим слотом — щоб не гадати, що робить `placement`.
+
+        На формі СТВОРЕННЯ `obj` порожній: показуємо порожній макет, і людина бачить
+        обидва стани головної ще до того, як щось обрала.
+        """
+        placement = getattr(obj, "placement", "") or ""
+        image = getattr(obj, "image", None)
+        return layout_preview(placement, image.url if image else "")
+
+    @display(description="Слот", label=SLOT_COLORS)
+    def supported_badge(self, obj: Banner) -> str:
+        """⚠️ Окремо від «Показується»: там період і галочка, а тут — куди банер потрапляє.
+        Банер може бути активним і при цьому не показуватись: або розміщення взагалі не
+        виводиться, або слот уже зайнятий іншим банером з меншим «Порядком»."""
+        return placement_badge(obj.placement)
 
     @display(description="Період")
     def period(self, obj: Banner) -> str:
