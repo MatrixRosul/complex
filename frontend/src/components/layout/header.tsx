@@ -69,17 +69,12 @@ export async function Header({ locale }: { locale: Locale }) {
   ).filter((item): item is MenuItemOut => Boolean(item));
 
   return (
-    // ⚠️ УСЯ ШАПКА — В КОЛІР ЕМБЛЕМИ (#0E3F68), а не лише верхня смуга: замовник хотів,
-    // щоб бренд тримав увесь блок. Наслідки, які довелось закрити разом зі зміною:
-    //   • логотип тепер ЗАВЖДИ світлий (темний на темно-синьому не читався б);
-    //   • кнопка «Каталог» освітлена — #15558F на #0E3F68 зливався;
-    //   • роздільник смуг — `border-white/15`, бо `border-border` на синьому невидимий.
-    <header className="sticky top-0 z-40 bg-brand-deep text-brand-deep-foreground">
+    <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur">
       {/* ── Верхня смуга: локація · інфо-сторінки · телефон + мова + тема ──
           Фон — брендовий темно-синій (референс denika.ua). Час роботи, який стояв тут
           раніше, прибраний свідомо: смуга тепер тримає три зони, і четверта не влазить
           без тісноти. Графік нікуди не подівся — він у футері й у бургер-меню. */}
-      <div className="hidden border-b border-white/15 lg:block">
+      <div className="hidden bg-brand-deep text-brand-deep-foreground lg:block">
         <div className="container-complex flex h-11 items-center justify-between gap-6 text-sm">
           {/* Статична адреса магазину (INPUTS §1), а НЕ вибір міста: магазин один. */}
           <span className="flex shrink-0 items-center gap-1.5 font-medium">
@@ -132,18 +127,33 @@ export async function Header({ locale }: { locale: Locale }) {
           aria-label={t("brand.name")}
         >
           {/*
-           * ЗАВЖДИ СВІТЛА ВЕРСІЯ. Шапка тепер сама темно-синя в обох темах, тож
-           * перемикати логотип по темі більше нема сенсу: синій знак на синьому фоні
-           * не читався б. `logo.png` (темний) лишається для світлих підкладок —
-           * футер, лист, OG-картинка.
+           * ДВА ФАЙЛИ, А НЕ ФІЛЬТР. Раніше тут стояв один логотип з `dark:invert` — це
+           * працювало, поки лого було чорним. Новий фірмовий знак СИНІЙ (#2E5F87), а
+           * invert синього дає брудно-жовтий, тобто в темній темі бренд ламався б.
+           * Заміна кольору фільтром для кольорового лого неможлива в принципі, тому
+           * світлу версію намальовано окремим файлом.
+           *
+           * Перемикання класами (`dark:hidden` / `hidden dark:block`), а не через
+           * useTheme: клас .dark стоїть на <html> ще ДО гідратації (інлайн-скрипт
+           * next-themes), тож потрібна картинка видима з першого кадру — без спалаху
+           * чужим логотипом і без розсинхрону сервер/клієнт.
            */}
           <Image
-            src="/images/logo-light.png"
+            src="/images/logo.png"
             alt={t("brand.name")}
             width={720}
             height={229}
             priority
-            className="h-8 w-auto md:h-9"
+            className="h-8 w-auto md:h-9 dark:hidden"
+          />
+          <Image
+            src="/images/logo-light.png"
+            alt=""
+            aria-hidden
+            width={720}
+            height={229}
+            priority
+            className="hidden h-8 w-auto md:h-9 dark:block"
           />
         </Link>
 
