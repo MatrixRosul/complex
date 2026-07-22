@@ -11,12 +11,15 @@ import type { CategoryOut } from "@/lib/api/types";
  * означало б, що доданий в адмінці розділ сюди не потрапить, а перейменований —
  * лишиться зі старою назвою. Тут той самий масив, що й у меню каталогу.
  *
- * ⚠️ Тільки з lg: на вузьких екранах дев'ять пунктів або переносяться в три ряди,
- * або перетворюються на горизонтальний скрол, який на телефоні майже ніхто не
- * прокручує. Мобільний вхід у каталог — бургер.
+ * ⚠️ ВИДНО НА ВСІХ ШИРИНАХ — і це виправлення, а не недогляд. Спочатку рядок стояв
+ * під `lg:`, і виходила діра: на десктопі категорії показувались ДВІЧІ (тут і в
+ * <CatalogSidebar>), а на телефоні — ЖОДНОГО разу, бо плитки категорій тимчасово
+ * вимкнені, а сайдбар теж лише з lg. Тобто на одному брейкпоінті все, на іншому
+ * нічого — замовник це й побачив як «то так, то так».
  *
- * `overflow-x-auto` лишається як страховка: якщо назви категорій колись стануть
- * довшими, рядок прокрутиться, а не поламає шапку.
+ * Тепер це ЄДИНИЙ вхід у розділи, який є завжди: на вузькому екрані рядок
+ * горизонтально прокручується (`overflow-x-auto`), на широкому просто вміщається.
+ * Прокрутка схована стилями нижче — смуга під шапкою виглядала б як помилка.
  */
 export function CategoryQuickNav({
   categories,
@@ -28,11 +31,12 @@ export function CategoryQuickNav({
   if (categories.length === 0) return null;
 
   return (
-    <nav
-      aria-label="Розділи каталогу"
-      className="hidden border-t border-border lg:block"
-    >
-      <div className="container-complex flex h-11 items-center gap-6 overflow-x-auto text-sm">
+    <nav aria-label="Розділи каталогу" className="border-t border-border">
+      <div
+        // `[scrollbar-width:none]` + webkit-правило: горизонтальна смуга під шапкою
+        // читається як зламана верстка, хоча скрол тут штатний.
+        className="container-complex flex h-11 items-center gap-5 overflow-x-auto text-sm [-ms-overflow-style:none] [scrollbar-width:none] lg:gap-6 [&::-webkit-scrollbar]:hidden"
+      >
         {categories.map((category) => (
           <Link
             key={category.id}
