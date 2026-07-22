@@ -23,6 +23,8 @@ from __future__ import annotations
 import logging
 from typing import Final
 
+import requests
+from django.conf import settings
 from django.core.cache import cache
 
 log = logging.getLogger(__name__)
@@ -37,6 +39,7 @@ __all__ = [
     "facet_meta_key",
     "invalidate_catalog_cache",
     "invalidate_collections_cache",
+    "revalidate_frontend",
     "tree_key",
 ]
 
@@ -57,6 +60,17 @@ _TREE_PREFIX: Final[str] = "cat:tree"
 _FACET_META_PREFIX: Final[str] = "facets:meta"
 _COLLECTIONS_PREFIX: Final[str] = "cat:collections"
 _BRANDS_KEY: Final[str] = "cat:brands"
+
+# Теги кешу Next (frontend/src/lib/api/http.ts). Тримаємо список тут, бо саме бекенд
+# знає, ЩО він змінив; ендпоінт /api/revalidate свідомо дурний і лише скидає передане.
+DEFAULT_REVALIDATE_TAGS: Final[list[str]] = [
+    "categories:uk",
+    "categories:ru",
+    "banners:uk",
+    "banners:ru",
+    "collections:uk",
+    "collections:ru",
+]
 
 
 def tree_key(lang: str) -> str:
@@ -103,6 +117,43 @@ def invalidate_catalog_cache() -> None:
         # Кеш недоступний — це не привід валити збереження в адмінці. TTL добере своє.
         log.warning("Не вдалося інвалідувати кеш каталогу", exc_info=True)
 
+    revalidate_frontend()
+
+
+def revalidate_frontend(tags: list[str] | None = None) -> None:
+    """Попросити Next скинути свій кеш ЗАРАЗ, а не чекати TTL.
+
+    🔴 БЕЗ ЦЬОГО ЗМІНА В АДМІНЦІ ДОЇЖДЖАЄ ДО САЙТУ ДО ГОДИНИ. Next кешує відповіді
+    каталогу на `TTL.tree = 3600`, тож свого Redis нам мало: ми чистимо СВІЙ кеш, а
+    фронт продовжує віддавати старе. Для замовника це виглядало як зламана функція —
+    він завантажував емблему категорії, оновлював сторінку й бачив типовий значок.
+
+    ⚠️ Помилки навмисно ковтаються. Фронт може бути недоступний (локальна розробка без
+    `npm run dev`, деплой), і це не привід валити збереження в адмінці: у найгіршому разі
+    дані оновляться за TTL, тобто повернемось до старої поведінки, а не зламаємось.
+
+    Порожній `NEXT_REVALIDATE_URL` → функція нічого не робить (штатний режим локалі).
+    """
+    url = getattr(settings, "NEXT_REVALIDATE_URL", "")
+    if not url:
+        return
+
+    if not url.startswith(("http://", "https://")):
+        log.warning("NEXT_REVALIDATE_URL має бути http(s), а не %r — пропускаю", url[:24])
+        return
+
+    try:
+        # Короткий таймаут: це побічна дія збереження в адмінці, людина не має
+        # чекати на мережу фронту.
+        requests.post(
+            url,
+            json={"tags": tags or DEFAULT_REVALIDATE_TAGS},
+            headers={"X-Revalidate-Secret": getattr(settings, "NEXT_REVALIDATE_SECRET", "") or ""},
+            timeout=3,
+        )
+    except Exception:
+        log.warning("Не вдалося скинути кеш фронту (%s)", url, exc_info=True)
+
 
 def invalidate_collections_cache() -> None:
     """Зносить ТІЛЬКИ добірки для головної (обидві мови).
@@ -116,3 +167,5 @@ def invalidate_collections_cache() -> None:
         cache.delete_many([collections_key(lang) for lang in ("uk", "ru")])
     except Exception:
         log.warning("Не вдалося інвалідувати кеш добірок", exc_info=True)
+
+    revalidate_frontend(["collections:uk", "collections:ru"])

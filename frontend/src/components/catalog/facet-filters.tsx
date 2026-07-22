@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ChevronDown } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -228,8 +228,20 @@ function FacetBlock({
     ? group.values.filter((v) => v.label.toLowerCase().includes(query.toLowerCase()))
     : group.values;
 
-  const visible = showAll ? filtered : filtered.slice(0, 8);
-  const rest = filtered.length - visible.length;
+  /**
+   * ⚠️ ОБРАНІ — ЗАВЖДИ ЗВЕРХУ. Список ріжеться до 8 позицій, тож бренд, обраний десь
+   * у хвості (умовний Sencor серед 30), ховався за «Показати ще 23»: фільтр діяв, а
+   * людина не бачила, ЩО саме ввімкнено, і не могла зняти його, не розгортаючи список.
+   * Тому обрані піднімаються нагору, а решта лишається у своєму порядку.
+   */
+  const ordered = useMemo(() => {
+    if (selected.length === 0) return filtered;
+    const isSelected = (v: (typeof filtered)[number]) => selected.includes(v.value);
+    return [...filtered.filter(isSelected), ...filtered.filter((v) => !isSelected(v))];
+  }, [filtered, selected]);
+
+  const visible = showAll ? ordered : ordered.slice(0, 8);
+  const rest = ordered.length - visible.length;
 
   // Switch-фасет («No Frost», «Оплата частинами») — один тумблер, без списку.
   if (group.widget === "switch" && group.values.length === 1) {
