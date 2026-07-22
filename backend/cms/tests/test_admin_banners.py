@@ -77,6 +77,8 @@ def test_add_banner_uploads_image(admin_client: Client) -> None:
         reverse("admin:cms_banner_add"),
         data={
             "placement": Banner.Placement.HOME_SLIDER,
+            # Поле з choices+default: у формі воно завжди преселектнуте, тож required.
+            "focal_point": Banner.Focal.CENTER,
             "sort_order": "0",
             "is_active": "on",
             "title_uk": "Знижки на холодильники",
@@ -100,6 +102,7 @@ def test_add_banner_accepts_home_side(admin_client: Client) -> None:
         reverse("admin:cms_banner_add"),
         data={
             "placement": Banner.Placement.HOME_SIDE,
+            "focal_point": Banner.Focal.CENTER,
             "sort_order": "0",
             "is_active": "on",
             "title_uk": "Реклама збоку",

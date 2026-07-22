@@ -514,6 +514,8 @@ export type BannerOut = {
   cta_label: string;
   /** "home_hero" | "home_promo" — місце на сторінці (Banner.placement у БД). */
   placement?: string;
+  /** CSS object-position: яку частину лишати в кадрі, коли слот обрізає картинку. */
+  focal_point?: string;
 };
 
 export type NewsPostOut = {

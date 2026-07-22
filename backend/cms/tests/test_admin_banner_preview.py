@@ -61,6 +61,30 @@ def test_slider_is_marked_as_fallback() -> None:
     assert placement_badge("home_promo") == "Широкий слот"
 
 
+def test_preview_shows_real_cropping() -> None:
+    """Прев'ю мусить різати картинку так само, як сайт: cover + обраний object-position.
+
+    ⚠️ Раніше тут був `contain` — картинка вписувалась цілком, і замовник бачив у прев'ю
+    те, чого на сайті не буває. Саме через це й додано `focal_point`.
+    """
+    html = str(layout_preview("home_side", "/media/banners/x.png", "top left"))
+    assert "object-fit:cover" in html
+    assert "object-position:top left" in html
+    assert "object-fit:contain" not in html
+
+
+def test_focal_point_reaches_api(client) -> None:
+    """Фронт бере кадрування з API — без цього поля адмінка показувала б не те, що сайт."""
+    Banner.objects.create(
+        placement=Banner.Placement.HOME_PROMO,
+        image="banners/x.png",
+        focal_point=Banner.Focal.BOTTOM,
+    )
+    res = client.get("/api/v1/cms/banners?lang=uk")
+    assert res.status_code == 200
+    assert res.json()[0]["focal_point"] == "bottom"
+
+
 def test_preview_escapes_image_url() -> None:
     """URL картинки йде в HTML — переконуємось, що через format_html, а не конкатенацію.
 

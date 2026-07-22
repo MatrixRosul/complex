@@ -46,12 +46,12 @@ type CatalogMenuValue = {
   /** Кнопка-тригер у хедері: провайдер повертає на неї фокус після Esc. */
   triggerRef: React.RefObject<HTMLButtonElement | null>;
   /**
-   * Чи видно ЗАРАЗ розгорнутий inline-каталог (сайдбар головної) у в'юпорті.
-   * Кнопка «Каталог» вирішує по ньому, малювати dropdown-оверлей чи ні:
-   * сайдбар видно → кнопка керує ним, оверлея немає (нема дублювання);
-   * сайдбар за екраном → кнопка відкриває звичайний dropdown зі стікі-хедера.
+   * Чи є на цій сторінці inline-каталог (сайдбар головної) — незалежно від скролу.
+   * Якщо є, dropdown НЕ малюється НІКОЛИ: відкриття прокручує сторінку вгору й
+   * розгортає той самий сайдбар. Саме цього просив замовник — «щоб не було
+   * 2 різних форм каталогів».
    */
-  inlineVisible: boolean;
+  hasInline: boolean;
   /** Ref-callback: сайдбар реєструє свій <section>, провайдер вішає на нього observer. */
   setInlineEl: (el: HTMLElement | null) => void;
 };
@@ -67,12 +67,14 @@ export function useCatalogMenu(): CatalogMenuValue {
 export function CatalogMenuProvider({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [hasInline, setHasInline] = useState(false);
   const [inlineVisible, setInlineVisible] = useState(false);
 
   const triggerRef = useRef<HTMLButtonElement>(null);
   const openTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const observer = useRef<IntersectionObserver | null>(null);
+  const inlineEl = useRef<HTMLElement | null>(null);
 
   const clearTimers = useCallback(() => {
     if (openTimer.current) clearTimeout(openTimer.current);
@@ -107,25 +109,37 @@ export function CatalogMenuProvider({ children }: { children: React.ReactNode })
   /**
    * Реєстрація inline-сайдбара + IntersectionObserver на нього.
    *
-   * ⚠️ БЕЗ rootMargin і з threshold 0 — НАВМИСНО. `inlineVisible` лишається true,
-   * доки в сайдбарі видно хоч піксель. Dropdown-оверлей вмикається ТІЛЬКИ коли
-   * сайдбар повністю пішов за верх в'юпорту. Якби ми перемикались раніше (поки
-   * сайдбар ще частково під стікі-хедером), оверлей ліг би поверх залишку сайдбара —
-   * рівно той баг «дві менюшки одна на одній», який ми й прибирали.
+   * `hasInline` каже, чи є сайдбар на сторінці ВЗАГАЛІ (тобто чи це головна), а
+   * `inlineVisible` — чи видно його ЗАРАЗ. Перше вирішує, який каталог показувати
+   * (сайдбар vs dropdown), друге — чи треба спершу прокрутити сторінку вгору.
    */
   const setInlineEl = useCallback((el: HTMLElement | null) => {
     observer.current?.disconnect();
+    inlineEl.current = el;
+    setHasInline(Boolean(el));
     if (!el) {
       setInlineVisible(false); // сайдбара немає (не головна) → inline недоступний
       return;
     }
-    const obs = new IntersectionObserver(
-      ([entry]) => setInlineVisible(entry.isIntersecting),
-      { threshold: 0 },
-    );
+    const obs = new IntersectionObserver(([entry]) => setInlineVisible(entry.isIntersecting), {
+      threshold: 0,
+    });
     obs.observe(el);
     observer.current = obs;
   }, []);
+
+  /**
+   * ВІДКРИЛИ КАТАЛОГ, А САЙДБАР ЗА ЕКРАНОМ → ВЕЗЕМО СТОРІНКУ ДО НЬОГО.
+   *
+   * ⚠️ Раніше в цьому випадку малювався окремий dropdown зі стікі-хедера — і саме він
+   * був другою «формою каталогу», на яку поскаржився замовник: та сама навігація, але
+   * в іншому місці й іншого вигляду. Тепер форма одна на всю головну, а «дотягнутись»
+   * до неї з будь-якої точки сторінки — задача скролу, а не другого компонента.
+   */
+  useEffect(() => {
+    if (!open || !hasInline || inlineVisible) return;
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [open, hasInline, inlineVisible]);
 
   useEffect(
     () => () => {
@@ -182,11 +196,34 @@ export function CatalogMenuProvider({ children }: { children: React.ReactNode })
       closeNow,
       toggle,
       triggerRef,
-      inlineVisible,
+      hasInline,
       setInlineEl,
     }),
-    [open, activeIndex, openSoon, closeSoon, openNow, closeNow, toggle, inlineVisible, setInlineEl],
+    [open, activeIndex, openSoon, closeSoon, openNow, closeNow, toggle, hasInline, setInlineEl],
   );
 
-  return <CatalogMenuContext.Provider value={value}>{children}</CatalogMenuContext.Provider>;
+  return (
+    <CatalogMenuContext.Provider value={value}>
+      {children}
+      {/*
+       * ПІДКЛАДКА ПІД ВІДКРИТИМ КАТАЛОГОМ: тло трохи темніє й розмивається, щоб каталог
+       * читався як окремий шар (прохання замовника).
+       *
+       * ⚠️ ТУТ КОЛИСЬ БУВ ОВЕРЛЕЙ І ЙОГО ЗНЕСЛИ — двічі не наступаємо на ті самі граблі:
+       *   1. ЗАЛИПАННЯ. Той оверлей був ДИТИНОЮ контейнера з `onMouseLeave`: курсор над
+       *      ним з погляду DOM лишався «всередині», mouseleave не спрацьовував і меню
+       *      не закривалось. Цей — сусід усього дерева (рендериться з провайдера) і має
+       *      `pointer-events-none`, тож жодних подій не перехоплює взагалі.
+       *   2. ЛАГИ. Причина була в товстому blur на весь в'юпорт. Тут 2px — композиція
+       *      одноразова, під час руху миші нічого не перераховується.
+       * z-30: нижче за хедер (z-40) і за сам каталог, але вище за контент сторінки.
+       */}
+      {open && (
+        <div
+          aria-hidden
+          className="pointer-events-none fixed inset-0 z-30 bg-foreground/10 backdrop-blur-[2px]"
+        />
+      )}
+    </CatalogMenuContext.Provider>
+  );
 }

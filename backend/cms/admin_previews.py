@@ -60,14 +60,22 @@ def _box(
     *,
     active: bool,
     image_url: str = "",
+    focal: str = "center",
     flex: str = "1",
 ) -> str:
-    """Один прямокутник макета. Активний — синій, з картинкою банера всередині."""
+    """Один прямокутник макета. Активний — синій, з картинкою банера всередині.
+
+    ⚠️ `object-fit: cover` + `object-position: {focal}` — РІВНО ТЕ, що робить сайт.
+    Раніше тут стояв `contain`: картинка вписувалась цілком, і прев'ю показувало те,
+    чого на сайті не буває — людина бачила повне зображення, а на сторінці воно
+    виявлялось обрізаним. Тепер обрізання видно тут, ще до збереження.
+    """
     if active and image_url:
         inner = format_html(
-            '<img src="{}" alt="" style="max-width:100%;max-height:100%;'
-            'object-fit:contain;border-radius:3px" />',
+            '<img src="{}" alt="" style="width:100%;height:100%;'
+            'object-fit:cover;object-position:{};border-radius:3px" />',
             image_url,
+            focal,
         )
     else:
         inner = format_html('<span style="opacity:.85">{}</span>', label)
@@ -120,7 +128,7 @@ def _mockup(caption: str, body: SafeString) -> SafeString:
     )
 
 
-def _variant(placement: str, image_url: str) -> SafeString:
+def _variant(placement: str, image_url: str, focal: str = "center") -> SafeString:
     """Схема для ОДНОГО розміщення: два стани головної + підказка під ними."""
     is_promo_slot = placement in {"home_promo", "home_slider"}
 
@@ -129,7 +137,7 @@ def _variant(placement: str, image_url: str) -> SafeString:
         format_html(
             "{}{}",
             _catalog_column(),
-            _box("широкий банер", active=is_promo_slot, image_url=image_url),
+            _box("широкий банер", active=is_promo_slot, image_url=image_url, focal=focal),
         ),
     )
     opened = _mockup(
@@ -142,6 +150,7 @@ def _variant(placement: str, image_url: str) -> SafeString:
                 "вузька",
                 active=placement == "home_side",
                 image_url=image_url,
+                focal=focal,
                 flex="1",
             ),
         ),
@@ -179,27 +188,35 @@ def _variant(placement: str, image_url: str) -> SafeString:
     )
 
 
-# Перемикання схеми ПРЯМО ПРИ ВИБОРІ в списку, без збереження.
+# Живе оновлення прев'ю ПРЯМО ПРИ ВИБОРІ, без збереження — і для розміщення, і для кадру.
 # ⚠️ Без цього прев'ю оновлювалось би лише після «Зберегти» — тобто рівно тоді, коли вже
-# пізно: людина обирає розміщення НАОСЛІП, а саме це й треба було прибрати. Тому сервер
-# віддає схеми для ВСІХ розміщень одразу, а скрипт показує ту, що відповідає вибору.
-# Слухаємо і 'change', і 'click' по опціях: Unfold підміняє нативний <select> своїм
-# віджетом, і подія 'change' на прихованому select приходить не в усіх темах.
+# пізно: людина обирає наосліп, а саме це й треба було прибрати. Тому сервер віддає схеми
+# для ВСІХ розміщень одразу, а скрипт показує потрібну й підкручує object-position.
+# Слухаємо ще й клік по документу: Unfold підміняє нативний <select> своїм віджетом, і
+# подія 'change' на прихованому select приходить не в усіх темах.
 _SWITCH_JS = """
 <script>
 (function () {
   function bind() {
     var root = document.getElementById('banner-layout-preview');
     if (!root) return;
-    var select = document.querySelector('select[name="placement"]');
-    if (!select) return;
+    var placement = document.querySelector('select[name="placement"]');
+    var focal = document.querySelector('select[name="focal_point"]');
+    if (!placement) return;
     function sync() {
-      var value = select.value || '';
+      var value = placement.value || '';
       root.querySelectorAll('[data-bp]').forEach(function (el) {
         el.style.display = el.getAttribute('data-bp') === value ? '' : 'none';
       });
+      if (focal) {
+        var pos = focal.value || 'center';
+        root.querySelectorAll('img').forEach(function (img) {
+          img.style.objectPosition = pos;
+        });
+      }
     }
-    select.addEventListener('change', sync);
+    placement.addEventListener('change', sync);
+    if (focal) focal.addEventListener('change', sync);
     document.addEventListener('click', function () { setTimeout(sync, 0); });
     sync();
   }
@@ -213,7 +230,7 @@ _SWITCH_JS = """
 """
 
 
-def layout_preview(placement: str, image_url: str = "") -> SafeString:
+def layout_preview(placement: str, image_url: str = "", focal: str = "center") -> SafeString:
     """Схеми для всіх розміщень; видима — та, що обрана зараз (і міняється на льоту)."""
     from cms.models import Banner
 
@@ -224,7 +241,7 @@ def layout_preview(placement: str, image_url: str = "") -> SafeString:
         "",
         '<div data-bp="{}" style="display:{}">{}</div>',
         (
-            (value, "" if value == current else "none", _variant(value, image_url))
+            (value, "" if value == current else "none", _variant(value, image_url, focal))
             for value in values
         ),
     )

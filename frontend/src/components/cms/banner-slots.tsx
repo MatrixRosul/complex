@@ -13,6 +13,10 @@ import type { BannerOut } from "@/lib/api/types";
  * ⚠️ Текст банера ВШИТИЙ у картинку (поле image перекладне), title/subtitle порожні —
  * тому scrim вимкнено (за замовчуванням) і накладний текст не рендериться. h2/p лишені
  * порожніми на випадок, якщо колись банер піде з реальним підписом (тоді + scrim).
+ *
+ * ⚠️ `rounded-none border-0` — не косметика: обидва слоти стоять УСЕРЕДИНІ суцільної
+ * панелі каталогу, яка сама тримає рамку й заокруглення по зовнішніх краях. Власна
+ * рамка банера домальовувала б другу лінію поруч із роздільником колонки.
  */
 export function PromoBanner({ banner, locale }: { banner: BannerOut; locale: Locale }) {
   return (
@@ -21,7 +25,7 @@ export function PromoBanner({ banner, locale }: { banner: BannerOut; locale: Loc
       locale={locale}
       priority
       sizes="(max-width: 1024px) 100vw, 66vw"
-      className="group h-full min-h-[300px] w-full flex-1 justify-end p-6"
+      className="group h-full min-h-[300px] w-full flex-1 justify-end rounded-none border-0 p-6"
     >
       <h2 className="text-h2 banner-text">{banner.title}</h2>
       <p className="max-w-md text-sm banner-text-muted">{banner.subtitle}</p>
@@ -36,7 +40,7 @@ export function SideAd({ banner, locale }: { banner: BannerOut; locale: Locale }
       locale={locale}
       priority
       sizes="300px"
-      className="group h-full min-h-[300px] justify-end p-5"
+      className="group h-full min-h-[300px] justify-end rounded-none border-0 p-5"
     >
       <h2 className="text-h3 banner-text">{banner.title}</h2>
       <p className="text-sm banner-text-muted">{banner.subtitle}</p>

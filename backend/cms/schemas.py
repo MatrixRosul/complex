@@ -18,6 +18,8 @@ class BannerOut(Schema):
     link: str = ""
     cta_label: str = ""  # моделі поки не має — фронт (types.ts) поле чекає, віддаємо порожнім
     placement: str = ""
+    # Валідний CSS `object-position` — фронт ставить його в стиль картинки як є.
+    focal_point: str = "center"
 
 
 class NewsPostOut(Schema):

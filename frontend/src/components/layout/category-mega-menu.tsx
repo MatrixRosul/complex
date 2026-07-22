@@ -2,7 +2,6 @@
 
 import { useRef, type ReactNode } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { ChevronRight, LayoutGrid, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -56,23 +55,20 @@ export function CategoryMegaMenu({
     closeNow,
     toggle,
     triggerRef,
-    inlineVisible,
+    hasInline,
   } = useCatalogMenu();
 
   const panelRef = useRef<HTMLDivElement>(null);
 
-  // Головна — єдина сторінка з розгорнутим <CatalogSidebar>. Панель там малює він.
-  const pathname = usePathname();
-  const hasInlineSidebar = pathname === localePath(locale);
-
   /**
-   * Коли малювати dropdown-оверлей замість inline-сайдбара:
-   *   • не головна — завжди (сайдбара тут немає взагалі);
-   *   • головна, але сайдбар прокручений за екран — теж, бо inline недоступний.
-   * Головна з видимим сайдбаром — оверлей НЕ малюємо: кнопка керує сайдбаром,
-   * інакше повернеться дублювання «дві менюшки одна на одній».
+   * Dropdown малюється ЛИШЕ там, де inline-каталогу немає (тобто не на головній).
+   *
+   * ⚠️ Раніше умова була складнішою: на головній dropdown усе-таки з'являвся, щойно
+   * сайдбар прокручували за екран. Виходило дві різні форми одного каталогу на одній
+   * сторінці — замовник це помітив і попросив прибрати. Тепер на головній форма рівно
+   * одна: відкриття з будь-якої точки прокручує сторінку до сайдбара (див. провайдер).
    */
-  const showDropdown = open && (!hasInlineSidebar || !inlineVisible);
+  const showDropdown = open && !hasInline;
 
   const active = categories[activeIndex];
 
@@ -124,8 +120,10 @@ export function CategoryMegaMenu({
            * 2. ЛАГИ. `backdrop-blur` на весь в'юпорт змушує браузер перераховувати розмиття
            *    фону на кожен кадр руху миші — на десктопі це відчутне гальмо.
            *
-           * Оверлей був не потрібен і функціонально: клік повз меню вже ловить `onClickOutside`,
-           * а Esc — `onKey`. Тому його просто немає.
+           * ⚡ Розмиття тла ПОВЕРНУЛОСЬ (замовник попросив), але вже НЕ ТУТ, а в
+           * <CatalogMenuProvider>: там воно сусід усього дерева, а не дитина цього div,
+           * і має `pointer-events-none` — тож обидві проблеми вище не відтворюються.
+           * Закриття, як і раніше, тримають `onClickOutside` і Esc у провайдері.
            */}
           <div
             ref={panelRef}

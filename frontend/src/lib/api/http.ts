@@ -341,6 +341,7 @@ function adaptBanner(b: WireBanner): BannerOut {
     link: b.link,
     cta_label: b.cta_label,
     placement: b.placement,
+    focal_point: b.focal_point,
   };
 }
 

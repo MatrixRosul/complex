@@ -84,10 +84,21 @@ export function CatalogSidebar({
     // акордеон дублював би бургер-меню. Мобільний вхід у каталог — плитки
     // <CategoryTiles> (вони, навпаки, сховані на lg+), тож дублювання немає ніде.
     <section
-      // ref → провайдер вішає IntersectionObserver: поки секцію видно, кнопка «Каталог»
-      // керує ЦИМ сайдбаром; коли прокрутили за екран — кнопка відкриває dropdown.
+      // ref → провайдер: реєструє сайдбар як ЄДИНУ форму каталогу на цій сторінці
+      // (dropdown тут не малюється) і, якщо секція за екраном, везе до неї сторінку.
       ref={setInlineEl}
-      className="hidden gap-6 lg:flex"
+      // z-40 у відкритому стані — рівно щоб сам каталог лишався НАД підкладкою, яка
+      // розмиває тло (вона z-30). Без цього блюр накрив би і його теж.
+      //
+      // ⚠️ ОДНА СУЦІЛЬНА ПАНЕЛЬ, А НЕ ТРИ КАРТКИ. Рамка й заокруглення живуть ТУТ, на
+      // зовнішньому контейнері, а колонки всередині розділені лише лінією (border-r/l).
+      // Тому між списком, підгрупами й банером немає ні відступів, ні внутрішніх
+      // закруглень — заокруглені лише зовнішні кути (прохання замовника).
+      // `overflow-hidden` обов'язковий: без нього кути дітей вилазять за радіус рамки.
+      className={cn(
+        "hidden overflow-hidden rounded-xl border border-border lg:flex",
+        open && "relative z-40",
+      )}
       data-catalog-menu
       onMouseLeave={closeSoon}
       aria-label={t("home.catalogHeading")}
@@ -96,7 +107,7 @@ export function CatalogSidebar({
           СПИСОК, а не кнопка в шапці. Активний пункт при цьому світлий — він «випадає»
           з заливки. Підсвітка лише коли каталог ВІДКРИТИЙ: у стані спокою (показуємо промо)
           жоден пункт не «обраний». */}
-      <nav className="w-[320px] shrink-0 rounded-xl border border-border bg-brand-subtle p-2">
+      <nav className="w-[320px] shrink-0 border-r border-border bg-brand-subtle p-2">
         <h2 className="px-3 py-2 text-sm font-semibold text-foreground">
           {t("home.catalogHeading")}
         </h2>
@@ -126,13 +137,10 @@ export function CatalogSidebar({
       {/* Права зона: ЗАКРИТО → широкий промо; ВІДКРИТО → підгрупи + опційна вузька реклама.
           Обидва стани тягнуться на висоту списку (flex align-stretch), тож при перемиканні
           немає вертикального стрибка — міняється лише вміст. */}
-      <div className="flex min-w-0 flex-1 gap-6">
+      <div className="flex min-w-0 flex-1">
         {open ? (
           <>
-            <div
-              ref={panelRef}
-              className="min-w-0 flex-1 overflow-y-auto rounded-xl border border-border bg-popover p-6"
-            >
+            <div ref={panelRef} className="min-w-0 flex-1 overflow-y-auto bg-popover p-6">
               <Link
                 href={localePath(locale, `/catalog/${active.slug}`)}
                 onClick={closeNow}
@@ -157,7 +165,11 @@ export function CatalogSidebar({
               </div>
             </div>
 
-            {sideAd && <aside className="hidden w-[300px] shrink-0 xl:block">{sideAd}</aside>}
+            {sideAd && (
+              <aside className="hidden w-[300px] shrink-0 border-l border-border xl:block">
+                {sideAd}
+              </aside>
+            )}
           </>
         ) : (
           promoBanner

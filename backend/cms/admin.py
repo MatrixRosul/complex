@@ -170,12 +170,26 @@ class BannerAdmin(ModelAdmin, TabbedTranslationAdmin):
                 ),
             },
         ),
-        ("Вміст", {"fields": ("title", "subtitle", "image", "image_mobile", "link_url")}),
+        (
+            "Вміст",
+            {
+                "description": (
+                    "Слот майже завжди інших пропорцій, ніж картинка, тож вона обрізається. "
+                    "«Що лишати в кадрі» вирішує, яку частину не обрізати — схема вище "
+                    "оновлюється одразу."
+                ),
+                "fields": ("title", "subtitle", "image", "focal_point", "image_mobile", "link_url"),
+            },
+        ),
         (
             "Період показу",
             {
+                # ⚠️ КОЖНЕ ПОЛЕ — ОКРЕМИМ РЯДКОМ. У парі (("starts_at", "ends_at"),) обидва
+                # datetime-віджети діляться однією шириною, а кожен із них — це ДВА інпути
+                # (дата + час) зі своїми підписами. На ноутбучному екрані вони не влазять
+                # і налазять одне на одне. Ширини тут не заміниш — це сітка Unfold.
                 "description": "Порожньо з будь-якого боку = без обмеження.",
-                "fields": (("starts_at", "ends_at"),),
+                "fields": ("starts_at", "ends_at"),
             },
         ),
     )
@@ -193,7 +207,8 @@ class BannerAdmin(ModelAdmin, TabbedTranslationAdmin):
         """
         placement = getattr(obj, "placement", "") or ""
         image = getattr(obj, "image", None)
-        return layout_preview(placement, image.url if image else "")
+        focal = getattr(obj, "focal_point", "") or "center"
+        return layout_preview(placement, image.url if image else "", focal)
 
     @display(description="Слот", label=SLOT_COLORS)
     def supported_badge(self, obj: Banner) -> str:

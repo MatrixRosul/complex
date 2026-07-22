@@ -74,6 +74,31 @@ class Banner(TimeStampedModel):
     image = models.ImageField("Зображення", upload_to="banners/")  # [tr]
     image_mobile = models.ImageField("Зображення (моб.)", upload_to="banners/", blank=True)  # [tr]
 
+    class Focal(models.TextChoices):
+        """Яку частину картинки лишати видимою, коли слот обрізає її по краях."""
+
+        CENTER = "center", "По центру"
+        TOP = "top", "Верх"
+        BOTTOM = "bottom", "Низ"
+        LEFT = "left", "Ліворуч"
+        RIGHT = "right", "Праворуч"
+        TOP_LEFT = "top left", "Верх ліворуч"
+        TOP_RIGHT = "top right", "Верх праворуч"
+        BOTTOM_LEFT = "bottom left", "Низ ліворуч"
+        BOTTOM_RIGHT = "bottom right", "Низ праворуч"
+
+    focal_point = models.CharField(
+        "Що лишати в кадрі",
+        max_length=16,
+        choices=Focal.choices,
+        default=Focal.CENTER,
+        help_text=(
+            "Слот майже завжди інших пропорцій, ніж картинка, тому вона обрізається. "
+            "Тут вибирається, яку частину НЕ обрізати — прев'ю показує результат одразу."
+        ),
+    )
+    # Значення — валідний CSS `object-position`, тому фронт віддає його у стиль як є.
+
     link_url = models.CharField("Посилання", max_length=500, blank=True)
     # Відносний шлях ("/uk/c/5609730/kholodylnyky") або абсолютний URL. Не URLField —
     # внутрішні посилання відносні, а URLField їх не пропустить.
