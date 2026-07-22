@@ -203,10 +203,34 @@ class CategoryBranchFilter(DropdownFilter):
     parameter_name = "category_branch"
 
     def lookups(self, request: HttpRequest, model_admin: Any) -> list[tuple[Any, str]]:
-        return [
-            (str(cat.pk), f"{'— ' * cat.depth}{cat.name}")
-            for cat in Category.objects.filter(is_service=False).order_by("path")
-        ]
+        """Дерево з відступами І З ЛІЧИЛЬНИКОМ — «Посудомийні машини (0)».
+
+        🔴 Лічильник тут не прикраса, а відповідь на другу скаргу: «не по всіх
+        категоріях працює, наприклад посудомийні машини». Фільтр працював —
+        категорія «Посудомийні машини» (під «Велика побутова техніка») просто
+        ПОРОЖНЯ, бо в прайсі окремостоячих посудомийок немає, усі 14 лежать у
+        «Вбудовані посудомийні машини». Порожній результат був чесним, але
+        неможливо було відрізнити його від поломки. Тепер видно ДО кліку.
+
+        Рахуємо ОДНИМ `GROUP BY` + роллап по `path` у Python (70 вузлів —
+        мікросекунди), а не запитом на категорію: інакше це 70 запитів на кожне
+        відкриття списку товарів.
+        """
+        categories = list(Category.objects.filter(is_service=False).order_by("path"))
+        direct: dict[int, int] = dict(
+            Product.objects.values_list("category_id").annotate(n=Count("id"))
+        )
+
+        lookups: list[tuple[Any, str]] = []
+        for cat in categories:
+            total = direct.get(cat.pk, 0) + sum(
+                n
+                for other in categories
+                if other.pk != cat.pk and other.path.startswith(f"{cat.path}/")
+                for n in (direct.get(other.pk, 0),)
+            )
+            lookups.append((str(cat.pk), f"{'— ' * cat.depth}{cat.name} ({total})"))
+        return lookups
 
     def queryset(self, request: HttpRequest, queryset: QuerySet) -> QuerySet:
         value = self.value()
