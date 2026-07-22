@@ -50,7 +50,8 @@ export function CatalogSidebar({
   const locale = useLocale();
 
   // Стан спільний з кнопкою «Каталог» — Esc і клік повз обробляє провайдер.
-  const { open, activeIndex, setActiveIndex, closeNow, setInlineEl } = useCatalogMenu();
+  const { open, activeIndex, setActiveIndex, closeNow, openByHover, closeByHover, setInlineEl } =
+    useCatalogMenu();
   const panelRef = useRef<HTMLDivElement>(null);
 
   if (categories.length === 0) return null;
@@ -58,15 +59,23 @@ export function CatalogSidebar({
   const active = categories[activeIndex] ?? categories[0];
 
   /**
-   * Наведення на корінь ПЕРЕМИКАЄ підгрупи, але САМЕ ПО СОБІ КАТАЛОГ НЕ ВІДКРИВАЄ.
+   * Наведення на корінь ПЕРЕМИКАЄ підгрупи Й РОЗГОРТАЄ КАТАЛОГ.
    *
-   * ⚠️ Раніше воно ще й відкривало: курсор проходив повз список — панель спалахувала,
-   * ішов убік — зникала. Замовниця написала «Це має бути кнопка». Тепер відкриття —
-   * лише клік по «Каталог», а ховер працює вже ВСЕРЕДИНІ відкритого каталогу, як і
-   * очікується (навів на категорію — побачив її підгрупи).
+   * ⚠️ ЧОМУ ТУТ ХОВЕР Є, А НА КНОПЦІ В ШАПЦІ ЙОГО НЕМАЄ — це не непослідовність, а дві
+   * різні вимоги замовниці, і обидві чинні:
+   *   • про кнопку: «Це має бути кнопка. Зараз воно по наведенню активується і коли
+   *     прибираю звідти мишку — зникає» → кнопка слухає тільки клік;
+   *   • про цей список: «боковому меню повернути вспливаючу інтерактивність, щоб
+   *     розгортало підкатегорії при наведенні» → тут ховер повернуто.
+   * Різниця виправдана: кнопка — маленька мішень у шапці, повз яку курсор проходить
+   * транзитом до пошуку й кошика; список — велика зона, у яку мишу ведуть навмисне.
+   *
+   * ⚠️ Ховер НЕ перехоплює каталог, відкритий кнопкою: закрити його ховер не може
+   * (див. `openBy` у catalog-menu.tsx). Інакше вимога про кнопку ламалась би збоку.
    */
   const activate = (index: number) => {
     setActiveIndex(index);
+    openByHover();
   };
 
   const onRootKeyDown = (e: React.KeyboardEvent, index: number) => {
@@ -105,6 +114,10 @@ export function CatalogSidebar({
         "hidden overflow-hidden rounded-xl border border-border lg:flex",
         open && "relative z-30",
       )}
+      // ⚠️ mouseleave — на ВСІЙ панелі, а не на списку: дорога зі списку в підгрупи
+      // (і в бічну рекламу) проходить усередині цієї ж секції, тож меню не гасне
+      // під курсором на півдорозі. Закриє лише те, що ховер сам і відкрив.
+      onMouseLeave={closeByHover}
       data-catalog-menu
       aria-label={t("home.catalogHeading")}
     >

@@ -24,24 +24,40 @@ import {
  * Хедер лежить у layout, сайдбар — у page, спільного React-батька нижче
  * <Providers> у них немає. Тому стан живе тут.
  *
- * ⚠️ ХОВЕРА БІЛЬШЕ НЕМАЄ — і це вимога, а не спрощення. Каталог відкривався, щойно
- * курсор проходив повз кнопку, і зникав, щойно той ішов убік; замовниця написала
- * прямо: «Це має бути кнопка». Тут раніше жили таймери 150/200 мс, які пом'якшували
- * ту поведінку — разом із нею вони й пішли. Відкриття/закриття роблять лише явні дії:
- * клік по кнопці (toggle), Esc і клік повз меню.
+ * ⚠️ ХТО ВІДКРИВ — ВАЖЛИВІШЕ, НІЖ «ВІДКРИТО ЧИ НІ». Тому стан не boolean, а `openBy`:
+ * "click" | "hover" | null. Дві вимоги замовниці виглядають як взаємовиключні, і без
+ * цього поля вони такими й були:
  *
- * Ховер лишився ВСЕРЕДИНІ відкритого каталогу — навів на категорію, побачив підгрупи.
- * Це вже не «відкриття», а навігація в межах відкритого меню.
+ *   1. КНОПКА В ШАПЦІ — САМЕ КНОПКА. «Зараз воно по наведенню активується і коли
+ *      прибираю звідти мишку — зникає». Кнопка ховер НЕ слухає взагалі.
+ *   2. СПИСОК У САЙДБАРІ НА ГОЛОВНІЙ — НАВПАКИ, ЖИВИЙ. «Боковому меню повернути
+ *      вспливаючу інтерактивність, щоб розгортало підкатегорії при наведенні».
+ *
+ * Конфлікт був би тут: відкрили КНОПКОЮ, повели мишу до сайдбара й вийшли з нього —
+ * і меню згорталось би, тобто пункт 1 знову зламався б. `openBy` це розрізняє:
+ * ховер закриває ЛИШЕ те, що ховер і відкрив (`openBy === "hover"`). Відкрите кліком
+ * тримається до явної дії: клік по кнопці (toggle), Esc, клік повз меню.
+ *
+ * Таймери 150/200 мс — не косметика: без затримки на відкритті каталог спалахує від
+ * випадкового проходу курсора, без затримки на закритті — гасне на щілині між
+ * колонками, поки миша йде зі списку в підгрупи.
  */
 type CatalogMenuValue = {
   open: boolean;
   /** Індекс кореневої категорії, підгрупи якої показані. */
   activeIndex: number;
   setActiveIndex: (index: number) => void;
-  /** Відкриття/закриття — лише явні дії: клік по кнопці, Esc, клік повз. */
+  /** Явні дії — клік по кнопці, Esc, клік повз. Скидають «відкрито ховером». */
   openNow: () => void;
   closeNow: () => void;
   toggle: () => void;
+  /**
+   * Ховер по списку сайдбара на головній. Відкриває із затримкою; якщо каталог уже
+   * відкритий кліком — не чіпає нічого, щоб не «розжалувати» його до ховерного.
+   */
+  openByHover: () => void;
+  /** Курсор пішов із сайдбара: згортає ЛИШЕ те, що сам ховер і розгорнув. */
+  closeByHover: () => void;
   /** Кнопка-тригер у хедері: провайдер повертає на неї фокус після Esc. */
   triggerRef: React.RefObject<HTMLButtonElement | null>;
   /**
@@ -63,8 +79,15 @@ export function useCatalogMenu(): CatalogMenuValue {
   return ctx;
 }
 
+/** Затримка перед розгортанням по ховеру — щоб випадковий прохід курсора не відкривав. */
+const HOVER_OPEN_MS = 150;
+/** Затримка перед згортанням — щоб меню не гасло на щілині між колонками. */
+const HOVER_CLOSE_MS = 200;
+
 export function CatalogMenuProvider({ children }: { children: React.ReactNode }) {
-  const [open, setOpen] = useState(false);
+  // null = закрито. Рядок = ЧИМ відкрито; від цього залежить, чи має право закрити ховер.
+  const [openBy, setOpenBy] = useState<"click" | "hover" | null>(null);
+  const open = openBy !== null;
   const [activeIndex, setActiveIndex] = useState(0);
   const [hasInline, setHasInline] = useState(false);
   const [inlineVisible, setInlineVisible] = useState(false);
@@ -82,17 +105,33 @@ export function CatalogMenuProvider({ children }: { children: React.ReactNode })
 
   const openNow = useCallback(() => {
     clearTimers();
-    setOpen(true);
+    setOpenBy("click");
   }, [clearTimers]);
 
   const closeNow = useCallback(() => {
     clearTimers();
-    setOpen(false);
+    setOpenBy(null);
   }, [clearTimers]);
 
   const toggle = useCallback(() => {
     clearTimers();
-    setOpen((v) => !v);
+    setOpenBy((v) => (v ? null : "click"));
+  }, [clearTimers]);
+
+  // ⚠️ `v ?? "hover"` — а не просто "hover": якщо каталог уже відкритий КЛІКОМ, ховер
+  //    лишає джерело як є. Інакше проведення мишею по сайдбару перетворювало б
+  //    закріплене кліком меню на ховерне, і воно згорталось би від виходу курсора.
+  const openByHover = useCallback(() => {
+    clearTimers();
+    openTimer.current = setTimeout(() => setOpenBy((v) => v ?? "hover"), HOVER_OPEN_MS);
+  }, [clearTimers]);
+
+  const closeByHover = useCallback(() => {
+    clearTimers();
+    closeTimer.current = setTimeout(
+      () => setOpenBy((v) => (v === "hover" ? null : v)),
+      HOVER_CLOSE_MS,
+    );
   }, [clearTimers]);
 
   /**
@@ -155,7 +194,7 @@ export function CatalogMenuProvider({ children }: { children: React.ReactNode })
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       clearTimers();
-      setOpen(false);
+      setOpenBy(null);
       triggerRef.current?.focus();
     };
 
@@ -163,7 +202,7 @@ export function CatalogMenuProvider({ children }: { children: React.ReactNode })
       const target = e.target as Element | null;
       if (target?.closest?.("[data-catalog-menu]")) return;
       clearTimers();
-      setOpen(false);
+      setOpenBy(null);
     };
 
     document.addEventListener("keydown", onKey);
@@ -182,11 +221,23 @@ export function CatalogMenuProvider({ children }: { children: React.ReactNode })
       openNow,
       closeNow,
       toggle,
+      openByHover,
+      closeByHover,
       triggerRef,
       hasInline,
       setInlineEl,
     }),
-    [open, activeIndex, openNow, closeNow, toggle, hasInline, setInlineEl],
+    [
+      open,
+      activeIndex,
+      openNow,
+      closeNow,
+      toggle,
+      openByHover,
+      closeByHover,
+      hasInline,
+      setInlineEl,
+    ],
   );
 
   return (
