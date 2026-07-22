@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { Breadcrumbs } from "@/components/layout/breadcrumbs";
+import { CategoryTiles } from "@/components/home/category-tiles";
 import {
   CatalogResults,
   parseCatalogParams,
@@ -10,6 +10,7 @@ import {
 } from "@/components/catalog/catalog-results";
 import { api } from "@/lib/api";
 import { resolveCatalogSlug } from "@/lib/catalog-path";
+import type { CategoryOut } from "@/lib/api/types";
 import { getT } from "@/i18n/dictionary";
 import { localePath, localeToApiLang, type Locale } from "@/i18n/config";
 
@@ -74,20 +75,20 @@ export default async function CatalogPage({
 
       <h1 className="text-h1 text-foreground">{data.category.name}</h1>
 
-      {/* Підкатегорії — швидкі посилання вглиб дерева. */}
+      {/* Підкатегорії — ПЛИТКИ З ФОТО, а не текстові чіпи.
+          ⚠️ Раніше тут був рядок чіпів, і завантажена в адмінці плитка підгрупи нікуди
+          не потрапляла: поле є, API його віддає, а сайт малював саму назву. Замовниця
+          спитала прямо — «для підгруп фото-плитки можна зробити в адмінці?». Можна було
+          й тоді, просто результату не було видно. Тепер той самий компонент, що й на
+          головній: своя картинка виграє, немає — фолбек на фото товару з підгрупи. */}
       {data.subcategories.length > 0 && (
-        <nav aria-label={t("catalog.subcategories")} className="flex flex-wrap gap-2">
-          {data.subcategories.map((sub) => (
-            <Link
-              key={sub.id}
-              href={localePath(locale, `/catalog/${slug.join("/")}/${sub.slug}`)}
-              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-sm text-foreground transition-colors hover:border-input"
-            >
-              {sub.name}
-              <span className="text-xs text-muted-foreground tnum">{sub.products_count}</span>
-            </Link>
-          ))}
-        </nav>
+        <CategoryTiles
+          categories={data.subcategories}
+          locale={locale}
+          title={t("catalog.subcategories")}
+          hrefFor={(sub: CategoryOut) => localePath(locale, `/catalog/${slug.join("/")}/${sub.slug}`)}
+          showCount
+        />
       )}
 
       <CatalogResults data={data} locale={locale} />

@@ -21,15 +21,29 @@ import type { CategoryOut } from "@/lib/api/types";
  *    магазину нічого не дає (це метрика складу, а не аргумент для покупця).
  *
  * 3. Порожній список → секції немає. Заголовка над порожнечею не буває.
+ *
+ * ⚠️ КОМПОНЕНТ ЗАГАЛЬНИЙ — і для коренів на головній, і для ПІДГРУП на сторінці
+ * категорії. Замовниця попросила «фото-плитки для підгруп»: поля `image`/`icon` у
+ * моделі спільні для всіх рівнів, і API вже віддавав `image_url` для підкатегорій —
+ * але сайт малював їх текстовими чіпами, тож завантажена плитка нікуди не потрапляла.
+ * Тому тут не копія компонента, а два параметри: `hrefFor` (у підгруп шлях глибший за
+ * `/catalog/{slug}`) і `showCount` (у навігації вглиб лічильник корисний, на головній
+ * він був антирекламою — див. пункт 2).
  */
 export function CategoryTiles({
   categories,
   locale,
   title,
+  hrefFor,
+  showCount = false,
 }: {
   categories: CategoryOut[];
   locale: Locale;
   title: string;
+  /** Куди веде плитка. Типово — корінь каталогу. */
+  hrefFor?: (category: CategoryOut) => string;
+  /** Показувати кількість товарів (для підгруп — так, на головній — ні). */
+  showCount?: boolean;
 }) {
   if (categories.length === 0) return null;
 
@@ -41,7 +55,7 @@ export function CategoryTiles({
         {categories.map((cat, i) => (
           <Link
             key={cat.id}
-            href={localePath(locale, `/catalog/${cat.slug}`)}
+            href={hrefFor ? hrefFor(cat) : localePath(locale, `/catalog/${cat.slug}`)}
             className="group flex flex-col overflow-hidden rounded-lg border border-border bg-card transition-all duration-150 hover:-translate-y-0.5 hover:border-transparent hover:shadow-lg"
           >
             <div className="relative aspect-[4/3] w-full bg-muted/30">
@@ -65,8 +79,13 @@ export function CategoryTiles({
               )}
             </div>
 
-            <span className="border-t border-border p-3 text-sm font-semibold text-foreground">
+            <span className="flex items-center justify-between gap-2 border-t border-border p-3 text-sm font-semibold text-foreground">
               {cat.name}
+              {showCount && cat.products_count > 0 && (
+                <span className="shrink-0 text-xs font-normal text-muted-foreground tnum">
+                  {cat.products_count}
+                </span>
+              )}
             </span>
           </Link>
         ))}
