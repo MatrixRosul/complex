@@ -25,13 +25,13 @@
 from __future__ import annotations
 
 import logging
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from django import forms
 from django.contrib import admin, messages
 from django.db import transaction
-from django.db.models import Count, QuerySet
+from django.db.models import Count, Q, QuerySet
 from django.http import HttpRequest, HttpResponse
 from django.urls import reverse
 from django.utils.html import format_html, format_html_join
@@ -42,13 +42,18 @@ from unfold.contrib.filters.admin import (
     AutocompleteSelectFilter,
     BooleanRadioFilter,
     ChoicesDropdownFilter,
+    DropdownFilter,
     RangeDateTimeFilter,
     RelatedDropdownFilter,
 )
 from unfold.decorators import action, display
 from unfold.enums import ActionVariant
 from unfold.forms import BaseDialogForm
-from unfold.widgets import UnfoldAdminSelectWidget, UnfoldBooleanSwitchWidget
+from unfold.widgets import (
+    UnfoldAdminSelectWidget,
+    UnfoldAdminTextInputWidget,
+    UnfoldBooleanSwitchWidget,
+)
 
 from catalog.enums import Availability, ProductSource
 from catalog.models import (
@@ -175,6 +180,46 @@ class SurrogateSkuFilter(RenamedBooleanFilter):
     filter_title = "Без артикула (ключ AUTO-…)"
 
 
+class CategoryBranchFilter(DropdownFilter):
+    """Фільтр «Категорія» — РАЗОМ З УСІМА ПІДКАТЕГОРІЯМИ.
+
+    🔴 Було: звичайний `("category", RelatedDropdownFilter)`, тобто точний збіг по FK.
+    Товари ж висять на ЛИСТКАХ дерева, а не на кореневих вузлах, — тому вибір
+    «Вбудована побутова техніка» давав «No results» попри 151 товар у гілці. Замовник
+    справедливо прочитав це як «фільтр не працює».
+
+    Тепер вибірка йде по матеріалізованому `path` (ADR-001 його для цього й тримає):
+    один індексований запит замість рекурсії по дереву.
+
+    ⚠️ `path__startswith` САМ ПО СОБІ БРЕХЛИВИЙ: шлях «87727179» — це префікс і для
+    «877271790», тобто чужа категорія з довшим external_id потрапила б у вибірку.
+    Тому умова з двох частин: або сам вузол, або нащадок ЧЕРЕЗ РОЗДІЛЮВАЧ (`path + "/"`).
+
+    Список показує все дерево з відступами — інакше «Духові шафи» під двома різними
+    батьками не відрізнити.
+    """
+
+    title = "Категорія (з підкатегоріями)"
+    parameter_name = "category_branch"
+
+    def lookups(self, request: HttpRequest, model_admin: Any) -> list[tuple[Any, str]]:
+        return [
+            (str(cat.pk), f"{'— ' * cat.depth}{cat.name}")
+            for cat in Category.objects.filter(is_service=False).order_by("path")
+        ]
+
+    def queryset(self, request: HttpRequest, queryset: QuerySet) -> QuerySet:
+        value = self.value()
+        if not value:
+            return queryset
+        category = Category.objects.filter(pk=value).only("path").first()
+        if category is None:
+            return queryset.none()
+        return queryset.filter(
+            Q(category__path=category.path) | Q(category__path__startswith=f"{category.path}/")
+        )
+
+
 # ---------------------------------------------------------------------------
 # Діалоги (підтвердження з показом наслідків)
 # ---------------------------------------------------------------------------
@@ -277,27 +322,185 @@ class ProductImageInline(TabularInline, TranslationTabularInline):
         return obj.get_source_display() if obj.pk else "—"
 
 
+_BOOL_CHOICES = (("", "—"), ("1", "Так"), ("0", "Ні"))
+_BOOL_TRUE = {"1", "так", "є", "yes", "true", "+", "да", "наявний", "присутній"}
+_BOOL_FALSE = {"0", "ні", "немає", "no", "false", "-", "нет", "відсутній"}
+
+
+def _pav_value_field(attr: Attribute | None) -> forms.Field:
+    """Одне поле «Значення» — рівно того типу, який оголошений у характеристиці."""
+    vt = attr.value_type if attr else None
+    if vt == Attribute.ValueType.OPTION:
+        return forms.ModelChoiceField(
+            label="Значення",
+            queryset=attr.options.all(),  # type: ignore[union-attr]
+            required=False,
+            empty_label="—",
+            widget=UnfoldAdminSelectWidget,
+        )
+    if vt == Attribute.ValueType.NUMBER:
+        # Text input, а не NumberInput: спінер поруч із «240,0000» — це шум, а не допомога.
+        return forms.DecimalField(
+            label="Значення",
+            required=False,
+            max_digits=14,
+            decimal_places=4,
+            widget=UnfoldAdminTextInputWidget,
+        )
+    if vt == Attribute.ValueType.BOOL:
+        # Власні choices, а не NullBooleanField: дефолтний віджет Django малює обрізане
+        # російське «Неиз[вестно]», а інтерфейс адмінки — тільки український.
+        return forms.ChoiceField(
+            label="Значення", required=False, choices=_BOOL_CHOICES, widget=UnfoldAdminSelectWidget
+        )
+    # STRING — і НОВИЙ рядок, де характеристику ще не обрано: приймаємо текст, а звести
+    # його до потрібного типу зможемо в clean(), коли характеристика вже відома.
+    return forms.CharField(
+        label="Значення", required=False, max_length=500, widget=UnfoldAdminTextInputWidget
+    )
+
+
+def _pav_value_initial(obj: ProductAttributeValue, attr: Attribute | None) -> Any:
+    vt = attr.value_type if attr else None
+    if vt == Attribute.ValueType.OPTION:
+        return obj.option_id
+    if vt == Attribute.ValueType.NUMBER:
+        return _fmt_number(obj.value_number)
+    if vt == Attribute.ValueType.BOOL:
+        return "" if obj.value_bool is None else ("1" if obj.value_bool else "0")
+    return obj.value_string
+
+
+class ProductAttributeValueForm(forms.ModelForm):
+    """Одна колонка «Значення» замість п'яти (варіант / текст uk / текст ru / число / так-ні).
+
+    ⚠️ ЧОМУ ТИП НЕ НА ГРУПІ. Тип значення вже є — `Attribute.value_type` — і жити він має саме
+       там: у групі «Основні» цілком законно стоять поруч «Загальний об'єм» (число), «Бренд»
+       (текст) і «No Frost» (так/ні). Група — це підзаголовок у картці (AttributeGroup), а не
+       тип даних; прив'язка типу до групи розсипалась би на першому ж товарі.
+
+       Бракувало не поля, а того, щоб редактор його ЧИТАВ: інлайн малював усі п'ять колонок
+       значення кожному рядку — звідси і горизонтальний скрол, і спінер числа навпроти
+       «Тип варильної поверхні: газова».
+
+    ⚠️ Рядок, якого не чіпали, НЕ переписується (див. clean): інакше зміна `value_type` заднім
+       числом мовчки витирала б значення, що лежать у «старому» полі.
+    """
+
+    value = forms.CharField(label="Значення", required=False)  # підміняється в __init__
+
+    class Meta:
+        model = ProductAttributeValue
+        fields = ("attribute", "sort_order")
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        attr = self.instance.attribute if self.instance.attribute_id else None
+        self.fields["value"] = _pav_value_field(attr)
+        self.initial["value"] = _pav_value_initial(self.instance, attr)
+
+    def clean(self) -> dict[str, Any]:
+        cleaned = super().clean()
+        attr = cleaned.get("attribute") or (
+            self.instance.attribute if self.instance.attribute_id else None
+        )
+        if attr is None:
+            return cleaned
+
+        swapped = bool(self.instance.pk) and self.instance.attribute_id != attr.pk
+        if self.instance.pk and not swapped and "value" not in self.changed_data:
+            return cleaned  # рядок не редагували — не чіпаємо і його значення
+
+        try:
+            self._apply_value(attr, cleaned.get("value"))
+        except forms.ValidationError as exc:
+            self.add_error("value", exc)
+        return cleaned
+
+    def _apply_value(self, attr: Attribute, raw: Any) -> None:
+        """Кладе значення РІВНО в одну колонку — ту, що відповідає attr.value_type."""
+        obj = self.instance
+        obj.option = None
+        obj.value_number = None
+        obj.value_bool = None
+        obj.value_string = ""
+        obj.value_string_uk = ""
+        obj.value_string_ru = ""
+        # ⚠️ RU скидаємо разом з UK: лишити старий переклад біля нового українського значення —
+        #    це показати покупцеві в RU-версії те, чого в товарі вже немає. До нового перекладу
+        #    RU впаде на UA-фолбек (MODELTRANSLATION_FALLBACK_LANGUAGES).
+        if raw in (None, "", []):
+            return
+
+        if attr.value_type == Attribute.ValueType.OPTION:
+            obj.option = raw if isinstance(raw, AttributeOption) else _find_option(attr, str(raw))
+        elif attr.value_type == Attribute.ValueType.NUMBER:
+            obj.value_number = raw if isinstance(raw, Decimal) else _to_decimal(str(raw))
+        elif attr.value_type == Attribute.ValueType.BOOL:
+            obj.value_bool = _to_bool(raw)
+        else:
+            text = (raw.value if isinstance(raw, AttributeOption) else str(raw))[:500]
+            obj.value_string = obj.value_string_uk = text
+
+
+def _find_option(attr: Attribute, text: str) -> AttributeOption:
+    """Шукає варіант серед уже наявних. НЕ створює: одна одруківка — і у фільтрі новий фасет."""
+    text = text.strip()[:160]
+    opt = (
+        AttributeOption.objects.filter(attribute=attr, value_uk__iexact=text).first()
+        or AttributeOption.objects.filter(attribute=attr, aliases__contains=[text]).first()
+        or AttributeOption.objects.filter(attribute=attr, slug=text).first()
+    )
+    if opt is not None:
+        return opt
+    known = list(attr.options.values_list("value", flat=True)[:8])
+    hint = ", ".join(f"«{v}»" for v in known) or "жодного ще немає"
+    raise forms.ValidationError(
+        f"У характеристиці «{attr.name}» немає варіанта «{text}». Наявні: {hint}. "
+        f"Спершу додайте варіант у «Варіанти характеристик»."
+    )
+
+
+def _to_decimal(text: str) -> Decimal:
+    try:
+        return Decimal(text.strip().replace("\xa0", "").replace(" ", "").replace(",", "."))
+    except (InvalidOperation, ArithmeticError, ValueError) as exc:
+        raise forms.ValidationError(f"«{text}» — не число.") from exc
+
+
+def _to_bool(raw: Any) -> bool:
+    if isinstance(raw, bool):
+        return raw
+    text = str(raw).strip().casefold()
+    if text in _BOOL_TRUE:
+        return True
+    if text in _BOOL_FALSE:
+        return False
+    raise forms.ValidationError(f"«{raw}» — це не «Так» і не «Ні».")
+
+
 class ProductAttributeValueInline(TabularInline, TranslationTabularInline):
     """Характеристики товару — джерело істини (EAV).
 
     ⚠️ Колонки «Одиниця» і «Як буде на картці» — READONLY і НЕ зберігаються: одиниця живе на
        Attribute.unit (FK на словник Unit), а не на значенні. Це і є «автопідстановка одиниці»:
        обрав характеристику — одиниця приїхала з неї, вручну її не вводять узагалі.
+
+    ⚠️ Колонка значення ОДНА (ProductAttributeValueForm), а не п'ять — саме тому таблиця
+       влазить у ширину екрана без горизонтального скролу.
     """
 
     model = ProductAttributeValue
+    form = ProductAttributeValueForm
     extra = 0
     tab = True
     show_count = True
-    autocomplete_fields = ("attribute", "option")
+    autocomplete_fields = ("attribute",)
     ordering = ("attribute__group__sort_order", "attribute__sort_order", "sort_order", "id")
     fields = (
         "attribute",
         "attr_group",
-        "option",
-        "value_string",
-        "value_number",
-        "value_bool",
+        "value",
         "attr_unit",
         "rendered",
         "sort_order",
@@ -486,7 +689,9 @@ class ProductAdmin(WysiwygBodyMixin, ModelAdmin, TabbedTranslationAdmin):
     list_per_page = 30
 
     list_filter = (
-        ("category", RelatedDropdownFilter),
+        # ⚠️ НЕ ("category", RelatedDropdownFilter) — той шукав точний збіг по FK і на
+        #    кореневій категорії давав «No results». Див. CategoryBranchFilter.
+        CategoryBranchFilter,
         ("brand", RelatedDropdownFilter),
         ("availability", ChoicesDropdownFilter),
         ("source_currency", ChoicesDropdownFilter),
