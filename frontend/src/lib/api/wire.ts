@@ -225,7 +225,9 @@ export type WireBanner = {
   link: string;
   cta_label: string;
   placement: string;
-  focal_point: string;
+  focus_x: number;
+  focus_y: number;
+  zoom: number;
 };
 
 export type WireNewsPost = {

@@ -38,11 +38,13 @@ from unfold.decorators import display
 
 from cms.admin_previews import (
     SLOT_COLORS,
-    layout_preview,
+    crop_editor,
     live_preview,
     mobile_preview,
     phone_thumb,
     placement_badge,
+    placement_hint,
+    real_slot_preview,
 )
 from cms.models import Banner, EditorImage, MenuItem, NewsPost, PickupPoint, StaticPage
 
@@ -161,43 +163,47 @@ class BannerAdmin(ModelAdmin, TabbedTranslationAdmin):
     list_filter = (("placement", ChoicesDropdownFilter), "is_active")
     search_fields = ("title", "subtitle")
     ordering = ("placement", "sort_order", "id")
-    readonly_fields = ("layout_preview", "mobile_preview")
+    readonly_fields = ("slot_preview", "crop_editor", "mobile_preview")
 
     fieldsets = (
         (
-            "Розміщення",
+            "Де це буде на сайті",
             {
                 "description": (
-                    "Оберіть розміщення — схема нижче покаже, у яке саме місце сайту "
-                    "потрапить банер. ⚠️ У кожному місці показується РІВНО ОДИН банер — "
-                    "той, у якого менший «Порядок». Решта чекають своєї черги."
+                    "Схема нижче — це СПРАВЖНІЙ слот з усіма банерами, які вже в ньому "
+                    "стоять. Ваш — у синій рамці. Одразу видно, скільки вміщається "
+                    "одночасно і що піде на перегортання."
+                ),
+                "fields": ("placement", "slot_preview", "sort_order", "is_active"),
+            },
+        ),
+        (
+            "Зображення і кадр",
+            {
+                "description": (
+                    "Слот майже завжди інших пропорцій, ніж фото, тож воно обрізається. "
+                    "<b>Клікніть по великому фото — саме ця точка лишиться в кадрі.</b> "
+                    "Числа під ним можна правити й руками."
                 ),
                 "fields": (
-                    "placement",
-                    "layout_preview",
-                    "category",
-                    "sort_order",
-                    "is_active",
+                    "image",
+                    "crop_editor",
+                    ("focus_x", "focus_y"),
+                    "zoom",
+                    "image_mobile",
+                    "mobile_preview",
                 ),
             },
         ),
         (
-            "Вміст",
+            "Текст і посилання",
             {
+                "classes": ("collapse",),
                 "description": (
-                    "Слот майже завжди інших пропорцій, ніж картинка, тож вона обрізається. "
-                    "«Що лишати в кадрі» вирішує, яку частину не обрізати — схема вище "
-                    "оновлюється одразу."
+                    "Заголовок і підзаголовок потрібні, ЛИШЕ якщо текст не вшитий у саму "
+                    "картинку. Порожні — банер показується просто як зображення."
                 ),
-                "fields": (
-                    "title",
-                    "subtitle",
-                    "image",
-                    "focal_point",
-                    "image_mobile",
-                    "mobile_preview",
-                    "link_url",
-                ),
+                "fields": ("title", "subtitle", "link_url"),
             },
         ),
         (
@@ -249,17 +255,27 @@ class BannerAdmin(ModelAdmin, TabbedTranslationAdmin):
         окрема мобільна картинка — без відкривання кожного банера."""
         return phone_thumb(obj)
 
-    @display(description="Де це на сайті")
-    def layout_preview(self, obj: Banner | None) -> str:
-        """Схема сторінки з підсвіченим слотом — щоб не гадати, що робить `placement`.
+    @display(description="Слот на сайті")
+    def slot_preview(self, obj: Banner | None) -> str:
+        """СПРАВЖНІЙ ряд слота з усіма живими банерами; поточний — у синій рамці.
 
-        На формі СТВОРЕННЯ `obj` порожній: показуємо порожній макет, і людина бачить
-        обидва стани головної ще до того, як щось обрала.
+        ⚠️ Не абстрактна схема: беремо реальні банери того самого розміщення в порядку
+        показу. Тому питання «а скільки одночасно вміщається?» відпадає само — видно,
+        що влізло в ряд, а що чекає перегортання.
         """
-        placement = getattr(obj, "placement", "") or ""
-        image = getattr(obj, "image", None)
-        focal = getattr(obj, "focal_point", "") or "center"
-        return layout_preview(placement, image.url if image else "", focal)
+        if obj is None:
+            obj = Banner(placement=Banner.Placement.HOME_PROMO)
+
+        siblings = list(
+            Banner.objects.filter(placement=obj.placement, is_active=True).order_by(
+                "sort_order", "id"
+            )
+        )
+        return format_html("{}{}", real_slot_preview(obj, siblings), placement_hint(obj.placement))
+
+    @display(description="Кадр — клікніть по фото")
+    def crop_editor(self, obj: Banner | None) -> str:
+        return crop_editor(obj) if obj is not None else ""
 
     @display(description="Слот", label=SLOT_COLORS)
     def supported_badge(self, obj: Banner) -> str:

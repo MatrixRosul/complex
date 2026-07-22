@@ -12,9 +12,9 @@
      У формі немає поля `image` — є `image_uk` / `image_ru`, і обов'язкове саме `image_uk`.
      Тест, який шле `image=`, «проходив» би повз валідацію і нічого не завантажував.
 
-  2. **`home_side`** з'явилось міграцією `cms/0002_alter_banner_placement` ПІСЛЯ того, як
-     форма вже жила. Якщо choices десь захардкожені (форма, віджет, фільтр) — вибір мовчки
-     відхиляється з «Select a valid choice».
+  2. **`home_side`** з'явилось міграцією ПІСЛЯ того, як форма вже жила, а `home_slider`
+     і `category_top` міграцією 0005 ПРИБРАНІ (сайт їх не виводив). Якщо choices десь
+     захардкожені — вибір мовчки відхиляється з «Select a valid choice».
 
   3. **`list_editable`** — галочка «Активний» прямо в списку. Це formset, а не звичайний POST
      (див. `core/tests/admin_forms.py`): найлегший спосіб отримати «натиснув Зберегти, а
@@ -58,7 +58,7 @@ def png_upload(name: str = "slider.png") -> SimpleUploadedFile:
 
 def _banner(**kwargs: Any) -> Banner:
     banner = Banner(
-        placement=kwargs.pop("placement", Banner.Placement.HOME_SLIDER),
+        placement=kwargs.pop("placement", Banner.Placement.HOME_PROMO),
         sort_order=kwargs.pop("sort_order", 0),
         **kwargs,
     )
@@ -76,9 +76,12 @@ def test_add_banner_uploads_image(admin_client: Client) -> None:
     response = admin_client.post(
         reverse("admin:cms_banner_add"),
         data={
-            "placement": Banner.Placement.HOME_SLIDER,
-            # Поле з choices+default: у формі воно завжди преселектнуте, тож required.
-            "focal_point": Banner.Focal.CENTER,
+            "placement": Banner.Placement.HOME_PROMO,
+            # Поля кадру мають дефолти в моделі, але у ФОРМІ вони обов'язкові
+            # (числові, не blank) — у справжній адмінці приходять преселектнутими.
+            "focus_x": "50",
+            "focus_y": "50",
+            "zoom": "100",
             "sort_order": "0",
             "is_active": "on",
             "title_uk": "Знижки на холодильники",
@@ -102,7 +105,9 @@ def test_add_banner_accepts_home_side(admin_client: Client) -> None:
         reverse("admin:cms_banner_add"),
         data={
             "placement": Banner.Placement.HOME_SIDE,
-            "focal_point": Banner.Focal.CENTER,
+            "focus_x": "50",
+            "focus_y": "50",
+            "zoom": "100",
             "sort_order": "0",
             "is_active": "on",
             "title_uk": "Реклама збоку",

@@ -56,9 +56,12 @@ export function BannerCard({
           priority={priority}
           sizes={sizes}
           // Слот майже завжди інших пропорцій, ніж картинка → `cover` її обрізає.
-          // ЯКУ САМЕ частину лишити, вирішує замовник в адмінці (Banner.focal_point);
-          // значення вже є валідним CSS object-position, тож іде у стиль як є.
-          style={{ objectPosition: banner.focal_point || "center" }}
+          // ЯКУ САМЕ частину лишити, вирішує замовник в адмінці, рухаючи кадр у
+          // відсотках; `zoom` наближає, щоб можна було прибрати зайве по краях.
+          style={{
+            objectPosition: `${banner.focus_x ?? 50}% ${banner.focus_y ?? 50}%`,
+            ...((banner.zoom ?? 100) > 100 ? { scale: `${(banner.zoom ?? 100) / 100}` } : {}),
+          }}
           className="object-cover transition-transform duration-200 group-hover:scale-[1.02]"
         />
       ) : null}

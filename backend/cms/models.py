@@ -44,6 +44,7 @@ RU — В MVP, не «на майбутнє»: порожній `_ru` відда
 from __future__ import annotations
 
 from django.conf import settings
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.db.models import Q
 from django.utils import timezone
@@ -52,7 +53,7 @@ from core.models import SEOMixin, TimeStampedModel
 
 
 class Banner(TimeStampedModel):
-    """Слайдер головної / промо-блок / банер над категорією.
+    """Рекламні банери головної: великі біля каталогу і вузький у відкритому каталозі.
 
     ⚡ `image` і `image_mobile` — ПЕРЕКЛАДНІ: у банерах текст запечений у картинку, тому
     RU-версія слайдера — це інший файл, а не інший підпис. Мобільна версія — окремий файл,
@@ -60,10 +61,20 @@ class Banner(TimeStampedModel):
     """
 
     class Placement(models.TextChoices):
-        HOME_SLIDER = "home_slider", "Слайдер головної"
-        HOME_PROMO = "home_promo", "Промо-блок головної"
-        HOME_SIDE = "home_side", "Реклама праворуч від каталогу (головна)"
-        CATEGORY_TOP = "category_top", "Банер над категорією"
+        """⚠️ ТІЛЬКИ ТЕ, ЩО САЙТ СПРАВДІ ВИВОДИТЬ.
+
+        Було чотири варіанти, два з яких брехали: «Слайдер головної» (слайдера не
+        існувало — банер мовчки падав у промо-слот) і «Банер над категорією» (фронт це
+        значення не читав узагалі, банер не показувався ніде). Замовник справедливо
+        спитав, чому в списку є те, чого немає. Обидва прибрані міграцією 0005:
+        слайдери переведені в промо, банери категорій деактивовані.
+
+        Назви — за МІСЦЕМ на сторінці, а не за жанром: обидва слоти стоять праворуч від
+        каталогу, і «промо-блок» проти «реклами» нічого не пояснювало.
+        """
+
+        HOME_PROMO = "home_promo", "Головна: банер біля каталогу (до 3 в ряд)"
+        HOME_SIDE = "home_side", "Головна: вузька реклама у відкритому каталозі"
 
     placement = models.CharField(
         "Розміщення", max_length=16, choices=Placement.choices, db_index=True
@@ -74,30 +85,29 @@ class Banner(TimeStampedModel):
     image = models.ImageField("Зображення", upload_to="banners/")  # [tr]
     image_mobile = models.ImageField("Зображення (моб.)", upload_to="banners/", blank=True)  # [tr]
 
-    class Focal(models.TextChoices):
-        """Яку частину картинки лишати видимою, коли слот обрізає її по краях."""
-
-        CENTER = "center", "По центру"
-        TOP = "top", "Верх"
-        BOTTOM = "bottom", "Низ"
-        LEFT = "left", "Ліворуч"
-        RIGHT = "right", "Праворуч"
-        TOP_LEFT = "top left", "Верх ліворуч"
-        TOP_RIGHT = "top right", "Верх праворуч"
-        BOTTOM_LEFT = "bottom left", "Низ ліворуч"
-        BOTTOM_RIGHT = "bottom right", "Низ праворуч"
-
-    focal_point = models.CharField(
-        "Що лишати в кадрі",
-        max_length=16,
-        choices=Focal.choices,
-        default=Focal.CENTER,
-        help_text=(
-            "Слот майже завжди інших пропорцій, ніж картинка, тому вона обрізається. "
-            "Тут вибирається, яку частину НЕ обрізати — прев'ю показує результат одразу."
-        ),
+    # ── Кадрування: ручне, у відсотках ───────────────────────────────────────
+    # ⚠️ БУЛО 9 ПРЕСЕТІВ («по центру», «верх ліворуч» …) — замовник попросив рухати
+    # кадр РУКАМИ. Відсотки дають будь-яку точку, а не дев'ять; у прев'ю адмінки їх
+    # ставлять кліком по картинці, тож числа руками вводити не обов'язково.
+    # Значення лягають прямо в CSS: object-position: {focus_x}% {focus_y}%.
+    focus_x = models.PositiveSmallIntegerField(
+        "Кадр по горизонталі, %",
+        default=50,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text="0 — лівий край, 100 — правий. Простіше: клікніть по картинці в схемі.",
     )
-    # Значення — валідний CSS `object-position`, тому фронт віддає його у стиль як є.
+    focus_y = models.PositiveSmallIntegerField(
+        "Кадр по вертикалі, %",
+        default=50,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text="0 — верх, 100 — низ.",
+    )
+    zoom = models.PositiveSmallIntegerField(
+        "Масштаб, %",
+        default=100,
+        validators=[MinValueValidator(100), MaxValueValidator(300)],
+        help_text="100 — вписати як є. Більше — наблизити (обріже сильніше).",
+    )
 
     link_url = models.CharField("Посилання", max_length=500, blank=True)
     # Відносний шлях ("/uk/c/5609730/kholodylnyky") або абсолютний URL. Не URLField —
@@ -108,12 +118,11 @@ class Banner(TimeStampedModel):
         null=True,
         blank=True,
         on_delete=models.CASCADE,
-        help_text=(
-            "Потрібна ТІЛЬКИ для розміщення «Банер над категорією». "
-            "Для банерів головної залиште порожнім."
-        ),
+        help_text="Не використовується: розміщення «над категорією» прибрано.",
     )
-    # Для placement=CATEGORY_TOP. CASCADE: банер категорії без категорії — сміття.
+    # ⚠️ Поле лишене, але з форми ПРИБРАНЕ (див. cms/admin.py). Єдиний його споживач —
+    # знесене розміщення CATEGORY_TOP. Видаляти колонку окремою міграцією зараз не
+    # варто: у ній може лежати звʼязок, а користі від видалення нуль.
 
     sort_order = models.PositiveSmallIntegerField("Порядок", default=0)
     is_active = models.BooleanField("Активний", default=True, db_index=True)

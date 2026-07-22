@@ -79,16 +79,28 @@ export default async function HomePage({
   );
 
   /**
-   * ПО ТРИ В РЯД (референс denika.ua: праворуч від каталогу стоять три вертикальні
-   * банери поруч, а не один широкий). Групи — це слайди: 1-3 банери дають один слайд
-   * без стрілок, 4+ — карусель гортає наступну трійку. Так жоден заведений банер не
-   * лишається невидимим і водночас не треба вигадувати «скільки показувати».
+   * ПО ТРИ В РЯД, АЛЕ ГОРТАЄМО ПО ОДНОМУ (референс denika.ua).
+   *
+   * ⚠️ Спершу банери різались на сторінки по 3 — і стрілка міняла ВСІ три одразу.
+   * Замовник попросив інакше: «через стрілочку новий 1 банер буде показувати».
+   * Тому слайд — це ВІКНО з трьох сусідніх банерів, а наступний слайд зсунутий рівно
+   * на один. Вікно циклічне, тож останні банери показуються в парі з першими, а не
+   * лишаються обрізаним хвостом.
+   *
+   * До трьох банерів — рівно один слайд і жодних стрілок (гортати нічого).
    */
-  const promoGroups = promoBanners.reduce<(typeof promoBanners)[]>((groups, banner, i) => {
-    if (i % 3 === 0) groups.push([]);
-    groups[groups.length - 1].push(banner);
-    return groups;
-  }, []);
+  const PROMO_PER_ROW = 3;
+  const promoGroups =
+    promoBanners.length <= PROMO_PER_ROW
+      ? promoBanners.length > 0
+        ? [promoBanners]
+        : []
+      : promoBanners.map((_, start) =>
+          Array.from(
+            { length: PROMO_PER_ROW },
+            (__, offset) => promoBanners[(start + offset) % promoBanners.length],
+          ),
+        );
 
   return (
     <div className="container-complex flex flex-col gap-12 py-6">

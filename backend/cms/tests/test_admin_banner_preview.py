@@ -1,97 +1,109 @@
-"""Схема-прев'ю банера в адмінці.
+"""Прев'ю банера в адмінці.
 
-Сенс тестів — не «чи гарно», а дві речі, які тихо ламаються:
-  1. форма банера взагалі відкривається (readonly-поле легко впустити 500-ю);
-  2. попередження про НЕПІДТРИМАНЕ розміщення показується. Якщо фронт колись навчиться
-     `category_top`, а `SUPPORTED` забудуть оновити — тест почне брехати разом з адмінкою,
-     тому він прив'язаний саме до розбіжності «є в choices, немає в SUPPORTED».
+Сенс тестів — не «чи гарно», а чотири речі, які тихо ламаються:
+  1. форма банера відкривається (readonly-поля легко впустити 500-ю);
+  2. у списку розміщень НЕМАЄ того, чого сайт не виводить — саме за це замовник і
+     зачепився («чого воно називається промо-блок, а слайдера нема»);
+  3. прев'ю ріже фото так само, як сайт (cover + object-position), а не показує його
+     цілком — інакше людина бачить те, чого на сторінці не буває;
+  4. у схемі слота видно ЄМНІСТЬ: скільки банерів стане в ряд, а скільки чекатиме.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from cms.admin_previews import SLOT_COLORS, SUPPORTED, layout_preview, placement_badge
+from cms.admin_previews import (
+    SLOT_CAPACITY,
+    SLOT_COLORS,
+    crop_editor,
+    live_preview,
+    placement_badge,
+    real_slot_preview,
+)
 from cms.models import Banner
 
 pytestmark = pytest.mark.django_db
 
 
-def test_add_form_renders_preview(admin_client) -> None:
-    """Форма створення відкривається і вже містить макет — ще до вибору розміщення."""
+def _banner(**kwargs) -> Banner:
+    kwargs.setdefault("placement", Banner.Placement.HOME_PROMO)
+    kwargs.setdefault("image", "banners/x.png")
+    banner = Banner(**kwargs)
+    banner.image_uk = banner.image = kwargs["image"]
+    banner.save()
+    return banner
+
+
+def test_add_form_opens(admin_client) -> None:
     res = admin_client.get("/admin/cms/banner/add/")
     assert res.status_code == 200
-    html = res.content.decode()
-    assert "Каталог закритий" in html
-    assert "Каталог відкритий" in html
+    assert "Слот на сайті" in res.content.decode()
 
 
-def test_change_form_highlights_slot_and_shows_image(admin_client, tmp_path) -> None:
-    """На формі редагування картинка банера стоїть у своєму слоті макета."""
-    banner = Banner.objects.create(placement=Banner.Placement.HOME_SIDE, image="banners/x.png")
+def test_change_form_opens_with_crop_editor(admin_client) -> None:
+    banner = _banner()
     res = admin_client.get(f"/admin/cms/banner/{banner.pk}/change/")
     assert res.status_code == 200
     html = res.content.decode()
-    assert "banners/x.png" in html  # картинка вмонтована в схему
-    assert "ВІДКРИТИЙ" in html  # підказка саме про відкритий стан
+    assert "banner-crop-stage" in html  # клікабельне фото для кадру
+    assert "banners/x.png" in html
 
 
-def test_unsupported_placement_is_flagged() -> None:
-    """`category_top` фронт не читає → підказка попереджає, а бейдж каже «Не виводиться»."""
-    unsupported = set(Banner.Placement.values) - SUPPORTED
-    assert unsupported, "Якщо всі розміщення підтримані — прибрати попередження й цей тест"
+def test_dead_placements_are_gone() -> None:
+    """Слайдера й банера над категорією на сайті немає — не має бути й у виборі.
 
-    for placement in unsupported:
-        html = str(layout_preview(placement))
-        assert "НЕ ВИВОДИТЬ" in html
-        assert placement_badge(placement) == "Не виводиться"
-
-
-def test_every_placement_has_a_slot_label() -> None:
-    """Нове значення в choices не повинно тихо лишитись без підпису й кольору."""
-    for placement in Banner.Placement.values:
-        label = placement_badge(placement)
-        assert label, f"{placement} без підпису слота"
-        assert label in SLOT_COLORS, f"{label} без кольору бейджа"
-
-
-def test_slider_is_marked_as_fallback() -> None:
-    """«Слайдер» не можна називати «виводиться»: він програє будь-якому «Промо-блоку»."""
-    assert placement_badge("home_slider") == "Запасний"
-    assert placement_badge("home_promo") == "Широкий слот"
-
-
-def test_preview_shows_real_cropping() -> None:
-    """Прев'ю мусить різати картинку так само, як сайт: cover + обраний object-position.
-
-    ⚠️ Раніше тут був `contain` — картинка вписувалась цілком, і замовник бачив у прев'ю
-    те, чого на сайті не буває. Саме через це й додано `focal_point`.
+    ⚠️ Тест навмисно прив'язаний до ЗНАЧЕНЬ, а не до кількості: якщо колись фронт
+    навчиться нового розміщення, його додадуть свідомо, а не поверне випадковий rebase.
     """
-    html = str(layout_preview("home_side", "/media/banners/x.png", "top left"))
+    values = set(Banner.Placement.values)
+    assert "home_slider" not in values
+    assert "category_top" not in values
+    assert values == {"home_promo", "home_side"}
+
+
+def test_every_placement_has_capacity_and_badge() -> None:
+    for placement in Banner.Placement.values:
+        assert placement in SLOT_CAPACITY, f"{placement} без ємності слота"
+        assert placement_badge(placement) in SLOT_COLORS
+
+
+def test_slot_preview_shows_capacity_and_queue() -> None:
+    """Четвертий банер у ряд не влазить → прев'ю це прямо каже."""
+    banners = [_banner(sort_order=i) for i in range(4)]
+    html = str(real_slot_preview(banners[0], banners))
+    assert "перегортанням" in html
+    assert "Ще 1" in html
+
+
+def test_slot_preview_counts_when_row_not_full() -> None:
+    banner = _banner()
+    html = str(real_slot_preview(banner, [banner]))
+    assert "Одночасно на сайті: 1 з 3" in html
+
+
+def test_preview_crops_like_site() -> None:
+    """cover + object-position з відсотків — рівно те, що робить фронт."""
+    banner = _banner(focus_x=20, focus_y=80)
+    html = str(live_preview(banner))
     assert "object-fit:cover" in html
-    assert "object-position:top left" in html
+    assert "object-position:20% 80%" in html
     assert "object-fit:contain" not in html
 
 
-def test_focal_point_reaches_api(client) -> None:
-    """Фронт бере кадрування з API — без цього поля адмінка показувала б не те, що сайт."""
-    Banner.objects.create(
-        placement=Banner.Placement.HOME_PROMO,
-        image="banners/x.png",
-        focal_point=Banner.Focal.BOTTOM,
-    )
-    res = client.get("/api/v1/cms/banners?lang=uk")
-    assert res.status_code == 200
-    assert res.json()[0]["focal_point"] == "bottom"
+def test_zoom_applied_only_above_100() -> None:
+    assert "scale(" not in str(live_preview(_banner(zoom=100)))
+    assert "scale(1.5)" in str(live_preview(_banner(zoom=150)))
 
 
-def test_preview_escapes_image_url() -> None:
-    """URL картинки йде в HTML — переконуємось, що через format_html, а не конкатенацію.
+def test_crop_editor_escapes_image_url() -> None:
+    """URL картинки йде в HTML — через format_html, не конкатенацію.
 
-    ⚠️ Перевіряємо саме ЕКРАНУВАННЯ payload'а, а не відсутність тега <script> взагалі:
-    у прев'ю є власний скрипт-перемикач схем, і наївний `"<script>" not in html`
-    ловив би його замість ін'єкції.
+    ⚠️ Перевіряємо саме ЕКРАНУВАННЯ payload'а: у прев'ю є власний скрипт кадрування,
+    тож наївний `"<script>" not in html` ловив би його замість ін'єкції.
     """
-    html = str(layout_preview("home_side", '"><script>alert(1)</script>'))
+    banner = _banner(image='"><script>alert(1)</script>')
+    html = str(crop_editor(banner))
+    # Головне: payload не став виконуваним тегом і не розірвав атрибут src.
     assert "<script>alert(1)</script>" not in html
-    assert "&lt;script&gt;alert(1)" in html
+    assert "&quot;&gt;&lt;script&gt;" in html or "%22%3E%3Cscript" in html

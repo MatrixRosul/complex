@@ -60,10 +60,12 @@ def banners(request: HttpRequest, lang: str = "uk", placement: str = ""):
             "link": b.link_url or "",
             "cta_label": "",
             "placement": b.placement,
-            # ⚠️ Словник збирається ВРУЧНУ, тож нове поле моделі саме сюди не потрапить:
-            # схема має для focal_point дефолт "center", і без цього рядка API мовчки
-            # віддавав би центр незалежно від того, що обрав замовник в адмінці.
-            "focal_point": b.focal_point or "center",
+            # ⚠️ Словник збирається ВРУЧНУ, тож нові поля моделі саме сюди не потраплять:
+            # у схеми є дефолти, і без цих рядків API мовчки віддавав би центр і 100%
+            # незалежно від того, як замовник скадрував банер в адмінці.
+            "focus_x": b.focus_x,
+            "focus_y": b.focus_y,
+            "zoom": b.zoom,
         }
         for b in qs.order_by("placement", "sort_order", "id")
     ]

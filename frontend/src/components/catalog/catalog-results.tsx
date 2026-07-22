@@ -37,7 +37,14 @@ export function CatalogResults({
   return (
     <div className="flex gap-8">
       {/* ── Сайдбар фасетів: 280px, sticky, власний скрол ─────────────── */}
-      <aside className="sticky top-32 hidden h-fit max-h-[calc(100vh-9rem)] w-[280px] shrink-0 overflow-y-auto lg:block">
+      <aside
+        // ⚠️ `overflow-x-hidden` + `pr-3` — не косметика. Вміст був на 11 px ширший за
+        // колонку (scrollWidth 291 проти 280), тож унизу вилазила ГОРИЗОНТАЛЬНА смуга
+        // прокрутки, а вертикальна лягала просто на лічильники товарів біля брендів.
+        // Тепер по горизонталі не скролиться взагалі, а відступ справа лишає смузі
+        // власне місце — цифри більше не перекриваються.
+        className="sticky top-32 hidden h-fit max-h-[calc(100vh-9rem)] w-[280px] shrink-0 overflow-y-auto overflow-x-hidden pr-3 lg:block"
+      >
         <FacetFilters facets={data.facets} priceRange={data.price_range} />
       </aside>
 
