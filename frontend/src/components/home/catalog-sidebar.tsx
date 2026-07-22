@@ -50,18 +50,23 @@ export function CatalogSidebar({
   const locale = useLocale();
 
   // Стан спільний з кнопкою «Каталог» — Esc і клік повз обробляє провайдер.
-  const { open, activeIndex, setActiveIndex, openNow, closeSoon, closeNow, setInlineEl } =
-    useCatalogMenu();
+  const { open, activeIndex, setActiveIndex, closeNow, setInlineEl } = useCatalogMenu();
   const panelRef = useRef<HTMLDivElement>(null);
 
   if (categories.length === 0) return null;
 
   const active = categories[activeIndex] ?? categories[0];
 
-  /** Наведення й фокус — одне й те саме: відкрити каталог на підгрупах цього кореня. */
+  /**
+   * Наведення на корінь ПЕРЕМИКАЄ підгрупи, але САМЕ ПО СОБІ КАТАЛОГ НЕ ВІДКРИВАЄ.
+   *
+   * ⚠️ Раніше воно ще й відкривало: курсор проходив повз список — панель спалахувала,
+   * ішов убік — зникала. Замовниця написала «Це має бути кнопка». Тепер відкриття —
+   * лише клік по «Каталог», а ховер працює вже ВСЕРЕДИНІ відкритого каталогу, як і
+   * очікується (навів на категорію — побачив її підгрупи).
+   */
   const activate = (index: number) => {
     setActiveIndex(index);
-    openNow();
   };
 
   const onRootKeyDown = (e: React.KeyboardEvent, index: number) => {
@@ -101,7 +106,6 @@ export function CatalogSidebar({
         open && "relative z-30",
       )}
       data-catalog-menu
-      onMouseLeave={closeSoon}
       aria-label={t("home.catalogHeading")}
     >
       {/* Панель каталогу залита брендовим відтінком (референс denika.ua): колір несе САМ

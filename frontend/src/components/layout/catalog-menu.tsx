@@ -24,22 +24,21 @@ import {
  * Хедер лежить у layout, сайдбар — у page, спільного React-батька нижче
  * <Providers> у них немає. Тому стан живе тут.
  *
- * ⚠️ ТАЙМЕРИ ХОВЕРА ТЕЖ ТУТ, а не в компонентах. Якби кожен тримав свій, перехід
- * мишею з кнопки в сайдбар виглядав би так: кнопка завела таймер закриття (200 мс),
- * сайдбар відкрив меню — і таймер кнопки все одно закрив би його вже після цього.
- * Спільний таймер скасовується будь-ким із двох, тож переходи не блимають.
- *   150 мс на відкриття — щоб меню не спалахувало, коли миша пролітає повз;
- *   200 мс на закриття  — щоб воно не зривалось при діагональному русі до підгруп.
+ * ⚠️ ХОВЕРА БІЛЬШЕ НЕМАЄ — і це вимога, а не спрощення. Каталог відкривався, щойно
+ * курсор проходив повз кнопку, і зникав, щойно той ішов убік; замовниця написала
+ * прямо: «Це має бути кнопка». Тут раніше жили таймери 150/200 мс, які пом'якшували
+ * ту поведінку — разом із нею вони й пішли. Відкриття/закриття роблять лише явні дії:
+ * клік по кнопці (toggle), Esc і клік повз меню.
+ *
+ * Ховер лишився ВСЕРЕДИНІ відкритого каталогу — навів на категорію, побачив підгрупи.
+ * Це вже не «відкриття», а навігація в межах відкритого меню.
  */
 type CatalogMenuValue = {
   open: boolean;
   /** Індекс кореневої категорії, підгрупи якої показані. */
   activeIndex: number;
   setActiveIndex: (index: number) => void;
-  /** Ховер: відкрити з затримкою / закрити з затримкою. */
-  openSoon: () => void;
-  closeSoon: () => void;
-  /** Без затримки — для кліку, фокуса й Esc. */
+  /** Відкриття/закриття — лише явні дії: клік по кнопці, Esc, клік повз. */
   openNow: () => void;
   closeNow: () => void;
   toggle: () => void;
@@ -89,16 +88,6 @@ export function CatalogMenuProvider({ children }: { children: React.ReactNode })
   const closeNow = useCallback(() => {
     clearTimers();
     setOpen(false);
-  }, [clearTimers]);
-
-  const openSoon = useCallback(() => {
-    clearTimers();
-    openTimer.current = setTimeout(() => setOpen(true), 150);
-  }, [clearTimers]);
-
-  const closeSoon = useCallback(() => {
-    clearTimers();
-    closeTimer.current = setTimeout(() => setOpen(false), 200);
   }, [clearTimers]);
 
   const toggle = useCallback(() => {
@@ -190,8 +179,6 @@ export function CatalogMenuProvider({ children }: { children: React.ReactNode })
       open,
       activeIndex,
       setActiveIndex,
-      openSoon,
-      closeSoon,
       openNow,
       closeNow,
       toggle,
@@ -199,7 +186,7 @@ export function CatalogMenuProvider({ children }: { children: React.ReactNode })
       hasInline,
       setInlineEl,
     }),
-    [open, activeIndex, openSoon, closeSoon, openNow, closeNow, toggle, hasInline, setInlineEl],
+    [open, activeIndex, openNow, closeNow, toggle, hasInline, setInlineEl],
   );
 
   return (

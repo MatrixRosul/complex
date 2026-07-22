@@ -50,8 +50,6 @@ export function CategoryMegaMenu({
     open,
     activeIndex,
     setActiveIndex,
-    openSoon,
-    closeSoon,
     closeNow,
     toggle,
     triggerRef,
@@ -88,12 +86,11 @@ export function CategoryMegaMenu({
   };
 
   return (
-    <div
-      className="relative"
-      data-catalog-menu
-      onMouseEnter={openSoon}
-      onMouseLeave={closeSoon}
-    >
+    // ⚠️ КАТАЛОГ ВІДКРИВАЄТЬСЯ ТІЛЬКИ КЛІКОМ. Ховера тут свідомо немає: меню
+    // спливало, щойно курсор проходив повз кнопку, і зникало, щойно він ішов убік —
+    // замовниця написала прямо: «Це має бути кнопка». Відкриття/закриття тепер
+    // роблять клік по кнопці, Esc і клік повз меню (обидва — у провайдері).
+    <div className="relative" data-catalog-menu>
       <Button
         ref={triggerRef}
         variant="default"

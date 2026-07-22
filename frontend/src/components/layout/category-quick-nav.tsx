@@ -1,4 +1,9 @@
+"use client";
+
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+
+import { cn } from "@/lib/utils";
 
 import { localePath, type Locale } from "@/i18n/config";
 import type { CategoryOut } from "@/lib/api/types";
@@ -20,6 +25,12 @@ import type { CategoryOut } from "@/lib/api/types";
  * Тепер це ЄДИНИЙ вхід у розділи, який є завжди: на вузькому екрані рядок
  * горизонтально прокручується (`overflow-x-auto`), на широкому просто вміщається.
  * Прокрутка схована стилями нижче — смуга під шапкою виглядала б як помилка.
+ *
+ * ⚠️ АКТИВНИЙ РОЗДІЛ ВИДІЛЕНИЙ. Замовниця: «щоб якщо вибране щось із цього, то
+ * підсвічувалось жирнішим текстом». Порівнюємо з ПОЧАТКОМ шляху, а не з рівністю:
+ * усередині «Вбудована / Духові шафи» розділ верхнього рівня теж має лишатись
+ * підсвіченим — інакше підсвітка гасне на першому ж кроці вглиб і виглядає як збій.
+ * Заради цього компонент став клієнтським (`usePathname`).
  */
 export function CategoryQuickNav({
   categories,
@@ -28,6 +39,8 @@ export function CategoryQuickNav({
   categories: CategoryOut[];
   locale: Locale;
 }) {
+  const pathname = usePathname();
+
   if (categories.length === 0) return null;
 
   return (
@@ -37,15 +50,28 @@ export function CategoryQuickNav({
         // читається як зламана верстка, хоча скрол тут штатний.
         className="container-complex flex h-11 items-center gap-5 overflow-x-auto text-sm [-ms-overflow-style:none] [scrollbar-width:none] lg:gap-6 [&::-webkit-scrollbar]:hidden"
       >
-        {categories.map((category) => (
-          <Link
-            key={category.id}
-            href={localePath(locale, `/catalog/${category.slug}`)}
-            className="whitespace-nowrap font-medium text-muted-foreground transition-colors hover:text-foreground"
-          >
-            {category.name}
-          </Link>
-        ))}
+        {categories.map((category) => {
+          const href = localePath(locale, `/catalog/${category.slug}`);
+          // `startsWith` + межа сегмента: «/catalog/velyka» не має підсвічувати
+          // «/catalog/velyka-tehnika», якщо колись з'явиться схожий slug.
+          const isActive = pathname === href || pathname.startsWith(`${href}/`);
+
+          return (
+            <Link
+              key={category.id}
+              href={href}
+              aria-current={isActive ? "page" : undefined}
+              className={cn(
+                "whitespace-nowrap transition-colors",
+                isActive
+                  ? "font-bold text-foreground"
+                  : "font-medium text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {category.name}
+            </Link>
+          );
+        })}
       </div>
     </nav>
   );
