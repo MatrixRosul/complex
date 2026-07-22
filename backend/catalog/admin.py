@@ -1567,6 +1567,12 @@ class CountryAdmin(NoDeleteMixin, ModelAdmin, TabbedTranslationAdmin):
 # ---------------------------------------------------------------------------
 @admin.register(AttributeGroup)
 class AttributeGroupAdmin(ModelAdmin, TabbedTranslationAdmin):
+    # ⚠️ ПЕРЕТЯГУВАННЯ ЗАМІСТЬ НОМЕРІВ. Список уже стоїть у порядку сайту
+    #    (Meta.ordering = sort_order, id), тому ручка «взяв і переставив» тут точна:
+    #    що бачиш зверху — те й буде зверху на картці товару.
+    #    Саме число лишається видимим: воно потрібне, коли груп багато і треба
+    #    вставити нову між існуючими, не перетягуючи через півсписку.
+    ordering_field = "sort_order"
     list_display = ("name", "code", "sort_order", "is_active", "attributes_badge")
     list_display_links = ("name",)
     list_editable = ("sort_order", "is_active")
@@ -1663,7 +1669,21 @@ class AttributeAdminForm(forms.ModelForm):
 
 @admin.register(Attribute)
 class AttributeAdmin(ModelAdmin, TabbedTranslationAdmin):
+    """Характеристики. Порядок правиться ПЕРЕТЯГУВАННЯМ, номери — запасний шлях.
+
+    ⚠️ ПРАЦЮЄ ТОМУ, ЩО СПИСОК УЖЕ У ПОРЯДКУ САЙТУ: `Attribute.Meta.ordering` —
+    (group__sort_order, sort_order, id), тобто рівно те, як характеристики лягають
+    у картку товару. Перетягування переписує `sort_order` усім рядкам СТОРІНКИ
+    (0, 1, 2 …) і зберігається кнопкою внизу — як і будь-яка правка в списку.
+
+    ⚠️ ТЯГНУТИ ТРЕБА, ВІДФІЛЬТРУВАВШИ ГРУПУ. Характеристик близько 1 600; без фільтра
+    на екрані видно шматок кількох груп одразу, і перетягування хоч і не змішає групи
+    (вони розділені `group__sort_order`), але перенумерує все, що потрапило на сторінку.
+    Фільтр «Група» вгорі — і список стає рівно тим блоком, який видно на картці.
+    """
+
     form = AttributeAdminForm
+    ordering_field = "sort_order"
     list_display = (
         "name",
         "code",
