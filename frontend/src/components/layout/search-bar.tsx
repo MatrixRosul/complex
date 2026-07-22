@@ -142,7 +142,7 @@ export function SearchBar({
         <div className="relative flex-1">
           <Search
             aria-hidden
-            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+            className="pointer-events-none absolute left-3.5 top-1/2 size-5 -translate-y-1/2 text-muted-foreground"
           />
           <input
             type="search"
@@ -166,11 +166,11 @@ export function SearchBar({
             aria-label={t("search.placeholder")}
             // ⚠️ border-input (3.42:1), а НЕ border-border (1.27:1):
             // це контрол, для нього WCAG 1.4.11 вимагає 3:1.
-            className="h-10 w-full rounded-md border border-input bg-background pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none"
+            className="h-12 w-full rounded-md border border-input bg-background pl-11 pr-3 text-base text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none"
           />
         </div>
 
-        <Button type="submit" variant="secondary" size="xl" className="hidden sm:inline-flex">
+        <Button type="submit" variant="secondary" size="xl" className="hidden h-12 px-6 text-base sm:inline-flex">
           {t("search.submit")}
         </Button>
       </form>

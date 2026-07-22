@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Heart, ShoppingCart, Scale } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { useLocale, useT } from "@/i18n/provider";
 import { localePath } from "@/i18n/config";
 import { useCartStore } from "@/store/cart";
@@ -35,7 +36,7 @@ export function HeaderActions() {
         href={localePath(locale, "/wishlist")}
         label={t("nav.wishlist")}
         count={hydrated ? wishCount : 0}
-        icon={<Heart className="size-5" />}
+        icon={<Heart className="size-6" />}
       />
       {/* ⚠️ БУЛО `hidden sm:inline-flex` — на телефоні (375–428px) іконки порівняння в шапці
           не існувало ЗОВСІМ, хоча ♡ і 🛒 поруч видимі завжди. Людина, що додала товари з
@@ -46,13 +47,13 @@ export function HeaderActions() {
         href={localePath(locale, "/compare")}
         label={t("nav.compare")}
         count={hydrated ? compareCount : 0}
-        icon={<Scale className="size-5" />}
+        icon={<Scale className="size-6" />}
       />
       <IconLink
         href={localePath(locale, "/cart")}
         label={t("nav.cart")}
         count={hydrated ? cartCount : 0}
-        icon={<ShoppingCart className="size-5" />}
+        icon={<ShoppingCart className="size-6" />}
       />
     </div>
   );
@@ -75,7 +76,9 @@ function IconLink({
     <Button
       variant="ghost"
       size="icon-lg"
-      className={className}
+      // size-11 замість дефолтних size-9: у рядку h-20 дев'ятка виглядає загубленою,
+      // і зона тапу на мобільному теж виграє (44 px — мінімум за WCAG 2.5.8).
+      className={cn("size-11", className)}
       /**
        * ⚠️ Це ПОСИЛАННЯ, а не кнопка: рендериться <a href>, а не <button>.
        * За замовчуванням Base UI вважає nativeButton=true і вішає на елемент семантику

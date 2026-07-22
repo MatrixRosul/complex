@@ -95,12 +95,15 @@ export function CategoryMegaMenu({
         ref={triggerRef}
         variant="default"
         size="xl"
+        // Висота — під основний рядок (h-20): кнопка каталогу і поле пошуку мусять
+        // стояти в одну лінію, інакше рядок розсипається на два різні розміри.
+        className="h-12 gap-2 px-5 text-base"
         aria-expanded={open}
         aria-haspopup="true"
         onClick={toggle}
       >
         {/* Відкрито → сітка міняється на ✕: кнопка і відкриває, і закриває (референс denika). */}
-        {open ? <X className="size-4" /> : <LayoutGrid className="size-4" />}
+        {open ? <X className="size-5" /> : <LayoutGrid className="size-5" />}
         {t("nav.catalog")}
       </Button>
 
