@@ -48,26 +48,30 @@ export default async function ProductPage({ params }: { params: Params }) {
   if (!product) notFound();
 
   /**
-   * Супутні товари.
+   * ДВА РІЗНІ БЛОКИ, А НЕ ОДИН З ФОЛБЕКОМ (вимога замовника).
    *
-   * ⚠️ RelatedGroup у БД зараз порожня (/products/{id}/related → []), тому чесний фолбек:
-   * товари ТІЄЇ Ж категорії. Порожній блок «Супутні товари» — це не «немає даних»,
-   * це втрачений крос-сел на найдорожчій сторінці сайту. Коли контент-менеджер заведе
-   * зв'язки — вони мають пріоритет, фолбек вимкнеться сам.
+   * Раніше «З цим товаром купують» підмінявся товарами тієї ж категорії, коли RelatedGroup
+   * порожня, — і заголовок брехав: під «купують разом» лежали конкуренти тієї ж моделі.
+   *
+   *   crossSell — ЛИШЕ те, що контент-менеджер завів руками (RelatedGroup). Немає — блока немає.
+   *   similar   — автопідбір по категорії. Це те, що блок робив і досі, але тепер під чесною
+   *               назвою «Схожі товари» і показується завжди.
+   *
+   * Порядок на сторінці: «З цим товаром купують» → «Схожі товари».
    */
-  const explicitRelated = await api.getRelatedProducts(product.id, lang);
+  const crossSell = await api.getRelatedProducts(product.id, lang);
 
-  const related =
-    explicitRelated.length > 0
-      ? explicitRelated
-      : (
-          await api.getCatalog(
-            { category: product.category.external_id, page_size: 9, sort: "popular" },
-            lang,
-          )
-        ).items
-          .filter((p) => p.id !== product.id)
-          .slice(0, 8);
+  const crossSellIds = new Set(crossSell.map((p) => p.id));
+  const similar = (
+    await api.getCatalog(
+      // ⚠️ Беремо з запасом: із видачі відсіюється сам товар + усі, що вже стоять
+      //    у «купують разом», інакше та сама модель світиться двічі поспіль.
+      { category: product.category.external_id, page_size: 16, sort: "popular" },
+      lang,
+    )
+  ).items
+    .filter((p) => p.id !== product.id && !crossSellIds.has(p.id))
+    .slice(0, 8);
 
   /**
    * Кнопка «← Назад до <категорія>».
@@ -140,8 +144,12 @@ export default async function ProductPage({ params }: { params: Params }) {
       {/* ── «Характеристики | Опис» — жорсткий формат замовника ─────── */}
       <SpecsTable specs={product.specs} description={product.description} />
 
-      {related.length > 0 && (
-        <RelatedProducts title={t("product.related")} products={related} />
+      {crossSell.length > 0 && (
+        <RelatedProducts title={t("product.related")} products={crossSell} />
+      )}
+
+      {similar.length > 0 && (
+        <RelatedProducts title={t("product.similar")} products={similar} />
       )}
     </div>
   );
