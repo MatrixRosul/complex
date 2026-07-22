@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { MapPin } from "lucide-react";
+import { Clock, MapPin } from "lucide-react";
 
 import { api } from "@/lib/api";
 import { safe } from "@/lib/api/safe";
@@ -13,6 +13,7 @@ import type { MenuItemOut } from "@/lib/api/types";
 import { SideAd } from "@/components/cms/banner-slots";
 
 import { CategoryMegaMenu } from "./category-mega-menu";
+import { CategoryQuickNav } from "./category-quick-nav";
 import { HeaderActions } from "./header-actions";
 import { LocaleSwitcher } from "./locale-switcher";
 import { MobileBurgerMenu } from "./mobile-burger-menu";
@@ -76,11 +77,24 @@ export async function Header({ locale }: { locale: Locale }) {
           без тісноти. Графік нікуди не подівся — він у футері й у бургер-меню. */}
       <div className="hidden bg-brand-deep text-brand-deep-foreground lg:block">
         <div className="container-complex flex h-11 items-center justify-between gap-6 text-sm">
-          {/* Статична адреса магазину (INPUTS §1), а НЕ вибір міста: магазин один. */}
-          <span className="flex shrink-0 items-center gap-1.5 font-medium">
-            <MapPin aria-hidden className="size-4" />
-            {t("topbar.location")}
-          </span>
+          {/* Статична адреса магазину (INPUTS §1), а НЕ вибір міста: магазин один.
+              Поруч — графік: він у контактах уже є, а покупцю важливо бачити «зараз
+              відчинено?» до того, як він набере номер. Крапка — просто маркер, НЕ
+              індикатор «зараз працює»: рахувати це чесно треба з урахуванням свят,
+              а вигадувати зелений вогник, який світить у неділю о 23:00, гірше,
+              ніж не показувати його взагалі. */}
+          <div className="flex shrink-0 items-center gap-4">
+            <span className="flex items-center gap-1.5 font-medium">
+              <MapPin aria-hidden className="size-4" />
+              {t("topbar.location")}
+            </span>
+            {contacts.working_hours.length > 0 && (
+              <span className="hidden items-center gap-1.5 text-white/85 xl:flex">
+                <Clock aria-hidden className="size-4" />
+                {contacts.working_hours.map((wh) => `${wh.days} ${wh.time}`).join(" · ")}
+              </span>
+            )}
+          </div>
 
           {topbarLinks.length > 0 && (
             <nav aria-label={t("topbar.nav")} className="flex items-center gap-6">
@@ -167,6 +181,9 @@ export async function Header({ locale }: { locale: Locale }) {
           <HeaderActions />
         </div>
       </div>
+
+      {/* ── Рядок розділів: швидкий вхід у категорію без відкривання каталогу ── */}
+      <CategoryQuickNav categories={categories} locale={locale} />
 
       {/* Пошук на мобільному — окремим рядком, бо в один рядок не влазить. */}
       <div className="container-complex pb-3 md:hidden">

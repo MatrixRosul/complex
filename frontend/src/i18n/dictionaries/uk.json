@@ -305,7 +305,7 @@
     "allSpecs": "Усі характеристики",
     "allDescription": "Весь опис",
     "collapse": "Згорнути",
-    "related": "Супутні товари",
+    "related": "З цим товаром купують",
     "similar": "Схожі товари",
     "installment": "{n} платежів",
     "installmentTooltip": "Оплата частинами: {n} платежів по {sum} без переплат",
