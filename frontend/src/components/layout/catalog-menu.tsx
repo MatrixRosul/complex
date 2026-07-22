@@ -216,12 +216,15 @@ export function CatalogMenuProvider({ children }: { children: React.ReactNode })
        *      `pointer-events-none`, тож жодних подій не перехоплює взагалі.
        *   2. ЛАГИ. Причина була в товстому blur на весь в'юпорт. Тут 2px — композиція
        *      одноразова, під час руху миші нічого не перераховується.
-       * z-30: нижче за хедер (z-40) і за сам каталог, але вище за контент сторінки.
+       * ⚠️ ШАРИ: підкладка z-20 < каталог z-30 < ХЕДЕР z-40 < dropdown z-50.
+       * Каталог мусить бути НИЖЧЕ за хедер: спершу він мав z-40, як і хедер, і при
+       * рівних z виграє той, хто пізніше в DOM — тобто сайдбар налазив на шапку при
+       * прокрутці. Тепер він гарантовано під нею й гарантовано над підкладкою.
        */}
       {open && (
         <div
           aria-hidden
-          className="pointer-events-none fixed inset-0 z-30 bg-foreground/10 backdrop-blur-[2px]"
+          className="pointer-events-none fixed inset-0 z-20 bg-foreground/10 backdrop-blur-[2px]"
         />
       )}
     </CatalogMenuContext.Provider>

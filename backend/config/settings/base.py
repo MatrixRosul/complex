@@ -181,10 +181,29 @@ DATABASES["default"]["CONN_HEALTH_CHECKS"] = True
 # ---------------------------------------------------------------------------
 REDIS_URL = env("REDIS_URL", default="redis://localhost:6379")
 
+
+def _redis_url(url: str) -> str:
+    """`rediss://` (TLS) → додати `ssl_cert_reqs=none`.
+
+    🔴 БЕЗ ЦЬОГО ПРОД ЛЕЖИТЬ. Heroku Redis віддає TLS-ендпоінт із САМОПІДПИСАНИМ
+    сертифікатом, а redis-py за замовчуванням вимагає перевірки ланцюжка й падає з
+    `SSL: CERTIFICATE_VERIFY_FAILED`. Оскільки сесії — `cached_db`, тобто ходять у кеш,
+    ЛЕЖИТЬ УСЯ АДМІНКА: будь-яка сторінка під логіном віддає 500 (симптом виглядав як
+    «падає сторінка /admin/sync/usdratechange», хоча та сторінка ні до чого).
+
+    Перевірено на прод-дино: без параметра — CERTIFICATE_VERIFY_FAILED, з ним — ping OK.
+    Значення саме `none` малими: redis-py приймає лише none/optional/required.
+    На локальному `redis://` (без TLS) функція нічого не робить.
+    """
+    if not url.startswith("rediss://") or "ssl_cert_reqs=" in url:
+        return url
+    return f"{url}{'&' if '?' in url else '?'}ssl_cert_reqs=none"
+
+
 CACHES = {
     "default": {
         "BACKEND": "django.core.cache.backends.redis.RedisCache",
-        "LOCATION": env("REDIS_CACHE_URL", default=f"{REDIS_URL}/1"),
+        "LOCATION": _redis_url(env("REDIS_CACHE_URL", default=f"{REDIS_URL}/1")),
         "KEY_PREFIX": "complex",
     },
 }
@@ -317,6 +336,18 @@ R2_SNAPSHOTS_BUCKET = env("R2_SNAPSHOTS_BUCKET", default="sync-snapshots")
 # ---------------------------------------------------------------------------
 CELERY_BROKER_URL = env("CELERY_BROKER_URL", default=f"{REDIS_URL}/0")
 CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", default=f"{REDIS_URL}/2")
+
+# Той самий самопідписаний сертифікат Heroku Redis б'є і по Celery — але тут НЕ через
+# query-параметр: kombu історично чекає на CERT_* і на 'none' може впасти. Явні
+# налаштування Celery надійніші й не залежать від його версії.
+if CELERY_BROKER_URL.startswith("rediss://"):
+    import ssl as _ssl
+
+    CELERY_BROKER_USE_SSL = {"ssl_cert_reqs": _ssl.CERT_NONE}
+if CELERY_RESULT_BACKEND.startswith("rediss://"):
+    import ssl as _ssl
+
+    CELERY_REDIS_BACKEND_USE_SSL = {"ssl_cert_reqs": _ssl.CERT_NONE}
 
 CELERY_TIMEZONE = TIME_ZONE  # Europe/Kyiv — інакше '0 8 * * *' поїде в UTC (SYNC.md §8)
 CELERY_ENABLE_UTC = True
@@ -549,13 +580,17 @@ def _admin_navigation() -> list[dict]:
                 _nav("Глосарій", "translation_glossaryterm", "menu_book"),
             ],
         },
-        {
-            "title": "Фіди (Hotline)",
-            "items": [
-                _nav("Артефакти фідів", "feeds_feedartifact", "rss_feed"),
-                _nav("Рубрикатор Hotline", "feeds_hotlinecategory", "account_tree"),
-            ],
-        },
+        # ⏸️ ФІДИ (HOTLINE) ПРИХОВАНІ З МЕНЮ — на прохання замовника, поки прайс-майданчик
+        # не підключають. Це саме ХОВАННЯ НАВІГАЦІЇ, а не вимкнення: застосунок `feeds`
+        # лишається в INSTALLED_APPS, генерація фіда за розкладом (celery beat) працює,
+        # сторінки доступні за прямим URL. Щоб повернути в меню — розкоментувати блок.
+        # {
+        #     "title": "Фіди (Hotline)",
+        #     "items": [
+        #         _nav("Артефакти фідів", "feeds_feedartifact", "rss_feed"),
+        #         _nav("Рубрикатор Hotline", "feeds_hotlinecategory", "account_tree"),
+        #     ],
+        # },
         {
             "title": "Налаштування",
             "items": [

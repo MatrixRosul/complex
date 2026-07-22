@@ -274,3 +274,113 @@ SLOT_COLORS: dict[str, str] = {
 def placement_badge(placement: str) -> str:
     """Куди саме потрапляє банер цього розміщення (див. SLOT_LABELS)."""
     return SLOT_LABELS.get(placement, "Не виводиться")
+
+
+def live_preview(banner) -> SafeString:
+    """Мініатюра «як цей банер виглядає на сайті ЗАРАЗ» — для списку банерів.
+
+    ⚠️ Саме `cover` + `object-position`, як у слоті на сайті, і в пропорціях слота:
+    широкий 3:2 для промо, вертикальний для бічної реклами. Звичайна мініатюра
+    показувала б картинку цілком і брехала б про кадрування.
+    """
+    image = getattr(banner, "image", None)
+    if not image:
+        return mark_safe('<span style="opacity:.5">— немає картинки</span>')
+
+    narrow = banner.placement == "home_side"
+    width, height = (60, 90) if narrow else (120, 80)
+
+    return format_html(
+        '<div style="width:{}px;height:{}px;border-radius:6px;overflow:hidden;'
+        'border:1px solid {}">'
+        '<img src="{}" alt="" style="width:100%;height:100%;object-fit:cover;'
+        'object-position:{}" /></div>',
+        width,
+        height,
+        MUTED_BORDER,
+        image.url,
+        banner.focal_point or "center",
+    )
+
+
+def phone_thumb(banner) -> SafeString:
+    """Мініатюра «як на телефоні» для СПИСКУ банерів.
+
+    Показує саме те, що побачить людина з телефона: мобільну картинку, якщо вона є,
+    інакше десктопну, обрізану під вузький екран. Так у списку одразу видно, для яких
+    банерів мобільна версія не заведена — не відкриваючи кожен.
+    """
+    image = getattr(banner, "image_mobile", None) or getattr(banner, "image", None)
+    if not image:
+        return mark_safe('<span style="opacity:.4">—</span>')
+
+    has_own = bool(getattr(banner, "image_mobile", None))
+    return format_html(
+        '<div style="display:flex;flex-direction:column;align-items:center;gap:3px">'
+        '<div style="width:46px;height:80px;border:2px solid {};border-radius:8px;'
+        'overflow:hidden">'
+        '<img src="{}" alt="" style="width:100%;height:100%;object-fit:cover;'
+        'object-position:{}" /></div>'
+        '<span style="font-size:9px;color:{}">{}</span></div>',
+        MUTED_BORDER,
+        image.url,
+        banner.focal_point or "center",
+        "#15803d" if has_own else WARN,
+        "своя" if has_own else "з десктопу",
+    )
+
+
+def mobile_preview(banner) -> SafeString:
+    """Як банер ляже на ТЕЛЕФОНІ + чи є для нього окрема мобільна картинка.
+
+    ⚠️ Мобільна версія — це НЕ CSS-кроп десктопної: широкий банер 1200×800, втиснутий у
+    375px, перетворюється на смужку, де від сюжету лишається смуга посередині. Тому в
+    моделі є окреме поле `image_mobile`. Тут видно і те, як обріжеться десктопна
+    картинка, і чи завантажено мобільну — без цього замовник дізнавався б про проблему
+    вже з телефона.
+    """
+    image = getattr(banner, "image", None)
+    mobile = getattr(banner, "image_mobile", None)
+    focal = getattr(banner, "focal_point", "") or "center"
+
+    if not image and not mobile:
+        return mark_safe('<span style="opacity:.5">Спершу завантажте зображення.</span>')
+
+    shown = mobile or image
+    # Телефон ~375px завширшки; беремо пропорцію екрана, а не картинки.
+    frame = format_html(
+        '<div style="width:150px;height:250px;border:6px solid {};border-radius:14px;'
+        'overflow:hidden;background:{}">'
+        '<div style="height:16px;background:{}"></div>'
+        '<img src="{}" alt="" style="width:100%;height:120px;object-fit:cover;'
+        'object-position:{}" />'
+        '<div style="padding:6px">'
+        '<div style="height:6px;margin:4px 0;border-radius:3px;background:{}"></div>'
+        '<div style="height:6px;margin:4px 0;width:70%;border-radius:3px;background:{}"></div>'
+        "</div></div>",
+        MUTED_BORDER,
+        MUTED_FILL,
+        BRAND,
+        shown.url,
+        focal,
+        MUTED_BORDER,
+        MUTED_BORDER,
+    )
+
+    if mobile:
+        note = format_html(
+            '<div style="margin-top:8px;font-size:12px;color:{}">✓ Окрема мобільна '
+            "картинка завантажена — на телефоні показується саме вона.</div>",
+            "#15803d",
+        )
+    else:
+        note = format_html(
+            '<div style="margin-top:8px;padding:8px 10px;border-radius:6px;'
+            'border-left:3px solid {};background:rgba(180,83,9,.10);font-size:12px">'
+            "Окремої мобільної картинки немає — на телефоні обріжеться десктопна "
+            "(видно вище). Якщо сюжет губиться, завантажте «Зображення (моб.)» "
+            "вертикальним або змініть «Що лишати в кадрі».</div>",
+            WARN,
+        )
+
+    return format_html("<div>{}{}</div>", frame, note)

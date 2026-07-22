@@ -33,6 +33,33 @@ export function PromoBanner({ banner, locale }: { banner: BannerOut; locale: Loc
   );
 }
 
+/**
+ * ПРОМО НА ТЕЛЕФОНІ. Окремий компонент, бо обидва слоти вище живуть усередині
+ * <CatalogSidebar>, а він `hidden lg:flex` — тобто на мобільному банерів не було
+ * ВЗАГАЛІ (замовник це помітив: «на телефоні не показується банери»).
+ *
+ * ⚠️ Бере `mobile_image_url`, якщо він заведений: широкий банер 1200×800, втиснутий
+ * у 375px, перетворюється на смужку. Немає мобільної версії — показуємо десктопну,
+ * обрізану за `focal_point` (тим самим, що видно в адмінці).
+ */
+export function MobilePromo({ banner, locale }: { banner: BannerOut; locale: Locale }) {
+  const forMobile = banner.mobile_image_url
+    ? { ...banner, image_url: banner.mobile_image_url }
+    : banner;
+
+  return (
+    <BannerCard
+      banner={forMobile}
+      locale={locale}
+      sizes="100vw"
+      className="group aspect-[16/9] w-full justify-end p-4"
+    >
+      <h2 className="text-h3 banner-text">{banner.title}</h2>
+      <p className="text-sm banner-text-muted">{banner.subtitle}</p>
+    </BannerCard>
+  );
+}
+
 export function SideAd({ banner, locale }: { banner: BannerOut; locale: Locale }) {
   return (
     <BannerCard

@@ -23,7 +23,10 @@
 
 from __future__ import annotations
 
+from django import forms
+from django.conf import settings
 from django.contrib import admin
+from django.db import models
 from django.db.models import Model
 from django.http import HttpRequest
 from django.utils.html import format_html
@@ -33,7 +36,14 @@ from unfold.contrib.filters.admin import ChoicesDropdownFilter, RangeDateTimeFil
 from unfold.contrib.forms.widgets import WysiwygWidget
 from unfold.decorators import display
 
-from cms.admin_previews import SLOT_COLORS, layout_preview, placement_badge
+from cms.admin_previews import (
+    SLOT_COLORS,
+    layout_preview,
+    live_preview,
+    mobile_preview,
+    phone_thumb,
+    placement_badge,
+)
 from cms.models import Banner, EditorImage, MenuItem, NewsPost, PickupPoint, StaticPage
 
 
@@ -137,6 +147,7 @@ class BannerAdmin(ModelAdmin, TabbedTranslationAdmin):
 
     list_display = (
         "preview",
+        "phone_preview",
         "title",
         "placement",
         "supported_badge",
@@ -150,7 +161,7 @@ class BannerAdmin(ModelAdmin, TabbedTranslationAdmin):
     list_filter = (("placement", ChoicesDropdownFilter), "is_active")
     search_fields = ("title", "subtitle")
     ordering = ("placement", "sort_order", "id")
-    readonly_fields = ("layout_preview",)
+    readonly_fields = ("layout_preview", "mobile_preview")
 
     fieldsets = (
         (
@@ -178,7 +189,15 @@ class BannerAdmin(ModelAdmin, TabbedTranslationAdmin):
                     "«Що лишати в кадрі» вирішує, яку частину не обрізати — схема вище "
                     "оновлюється одразу."
                 ),
-                "fields": ("title", "subtitle", "image", "focal_point", "image_mobile", "link_url"),
+                "fields": (
+                    "title",
+                    "subtitle",
+                    "image",
+                    "focal_point",
+                    "image_mobile",
+                    "mobile_preview",
+                    "link_url",
+                ),
             },
         ),
         (
@@ -194,9 +213,41 @@ class BannerAdmin(ModelAdmin, TabbedTranslationAdmin):
         ),
     )
 
-    @display(description="Прев'ю")
+    def formfield_for_dbfield(self, db_field, request, **kwargs):
+        """Дата й час — НАТИВНИМИ полями браузера, а не пресетами.
+
+        ⚠️ Стандартний віджет адмінки дає для часу список-ярлики («Зараз», «Північ»,
+        «6», «Полудень», «18:00») — тобто рівно п'ять варіантів. Замовник справедливо
+        не зміг виставити, скажімо, 09:30: довільний час туди просто не ввести.
+        `<input type="time">` дає рідний піклер ОС з будь-якою хвилиною.
+
+        Підпис із поясом обов'язковий: USE_TZ=True, у базі UTC, а людина вводить
+        київський час — без явної позначки це джерело мовчазних помилок на годину.
+        """
+        if isinstance(db_field, models.DateTimeField):
+            kwargs["form_class"] = forms.SplitDateTimeField
+            kwargs["widget"] = forms.SplitDateTimeWidget(
+                date_attrs={"type": "date", "class": "vDateField"},
+                time_attrs={"type": "time", "step": 60, "class": "vTimeField"},
+            )
+            kwargs.setdefault("help_text", f"Час місцевий — {settings.TIME_ZONE}.")
+        return super().formfield_for_dbfield(db_field, request, **kwargs)
+
+    @display(description="Як на сайті")
     def preview(self, obj: Banner) -> str:
-        return image_preview(obj.image, height=40)
+        """⚠️ НЕ проста мініатюра: показує банер САМЕ так, як його обрізає його слот —
+        інакше список брехав би про кадрування (див. live_preview)."""
+        return live_preview(obj)
+
+    @display(description="На телефоні")
+    def mobile_preview(self, obj: Banner | None) -> str:
+        return mobile_preview(obj) if obj is not None else ""
+
+    @display(description="Телефон")
+    def phone_preview(self, obj: Banner) -> str:
+        """Друга колонка списку: як банер ляже на вузькому екрані і чи є для нього
+        окрема мобільна картинка — без відкривання кожного банера."""
+        return phone_thumb(obj)
 
     @display(description="Де це на сайті")
     def layout_preview(self, obj: Banner | None) -> str:

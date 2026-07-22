@@ -1,9 +1,9 @@
 import Link from "next/link";
 
-import { PromoBanner, SideAd } from "@/components/cms/banner-slots";
+import { BannerCarousel } from "@/components/cms/banner-carousel";
+import { MobilePromo, PromoBanner, SideAd } from "@/components/cms/banner-slots";
 import { BrandStrip } from "@/components/home/brand-strip";
 import { CatalogSidebar } from "@/components/home/catalog-sidebar";
-import { CategoryTiles } from "@/components/home/category-tiles";
 import { RecentlyViewed } from "@/components/home/recently-viewed";
 import { TrustStrip } from "@/components/home/trust-strip";
 import { RelatedProducts } from "@/components/product/related-products";
@@ -65,15 +65,18 @@ export default async function HomePage({
    * ПОРУЧ ІЗ КАТАЛОГОМ угорі — це і є hero. Другий великий банер під ним показував би
    * промо того самого класу вдруге (дублювання, на яке поскаржився замовник) і зіштовхував
    * би реальний контент — каруселі категорій — донизу. Тому промо тепер живе рівно в одному
-   * місці: правій зоні каталогу. Жодного банера не втрачено як РОЛЬ (промо + бічна реклама),
-   * а якщо промо-банерів кілька — у слоті показується перший (ротація-слайдер — окрема задача).
+   * місці: правій зоні каталогу. Жодного банера не втрачено як РОЛЬ (промо + бічна реклама).
+   *
+   * ⚡ КІЛЬКА ПРОМО = СЛАЙДЕР. Раніше в слоті показувався лише ПЕРШИЙ банер, а решта мовчки
+   * чекали черги — замовник заводив кілька й бачив одне. Тепер усі промо йдуть у <BannerCarousel>
+   * (автопрокрутка + стрілки), а один банер він рендерить як звичайний, без органів керування.
    */
   const sideBanner = banners.find((b) => b.placement === "home_side") ?? null;
-  const promoBannerData =
-    banners.find((b) => b.placement === "home_promo") ??
-    banners.find((b) => b.placement === "home_slider") ??
-    banners.find((b) => b.id !== sideBanner?.id) ??
-    null;
+  const promoBanners = banners.filter(
+    (b) =>
+      b.id !== sideBanner?.id &&
+      (b.placement === "home_promo" || b.placement === "home_slider"),
+  );
 
   return (
     <div className="container-complex flex flex-col gap-12 py-6">
@@ -85,10 +88,30 @@ export default async function HomePage({
         categories={categories}
         iconOf={emblemMap(categories)}
         promoBanner={
-          promoBannerData ? <PromoBanner banner={promoBannerData} locale={locale} /> : null
+          promoBanners.length > 0 ? (
+            <BannerCarousel
+              slides={promoBanners.map((b) => (
+                <PromoBanner key={b.id} banner={b} locale={locale} />
+              ))}
+            />
+          ) : null
         }
         sideAd={sideBanner ? <SideAd banner={sideBanner} locale={locale} /> : null}
       />
+
+      {/* ── Промо на ТЕЛЕФОНІ ────────────────────────────────────────────
+          Банери десктопу лежать усередині <CatalogSidebar>, а він `hidden lg:flex` —
+          тому на мобільному реклами не було взагалі. Тут той самий слайдер, але
+          мобільними картинками (див. <MobilePromo>) і лише на вузьких екранах. */}
+      {promoBanners.length > 0 && (
+        <div className="lg:hidden">
+          <BannerCarousel
+            slides={promoBanners.map((b) => (
+              <MobilePromo key={b.id} banner={b} locale={locale} />
+            ))}
+          />
+        </div>
+      )}
 
       {/* ── Категорії: плитки з фото товару, без лічильників ──────────────
           ⚠️ `lg:hidden` — плитки й новий <CatalogSidebar> показують ОДНЕ Й ТЕ САМЕ
@@ -96,9 +119,16 @@ export default async function HomePage({
           на вузьких екранах — плитки (сайдбар там `hidden lg:flex`). Прибирати плитки
           зовсім не можна: на мобільному вони єдиний вхід у каталог прямо зі сторінки,
           решта — тільки бургер, а це на клік більше й невидимо для краулера. */}
+      {/* ⏸️ ПЛИТКИ КАТЕГОРІЙ НА МОБІЛЬНОМУ ТИМЧАСОВО ВИМКНЕНІ — на прохання замовника:
+          мобільна версія ще не доопрацьована, і цей блок там поки виглядає зайвим.
+          ⚠️ Плата за це: на телефоні єдиний вхід у каталог тепер бургер-меню (+1 клік,
+          і краулер не бачить посилань на категорії прямо з головної). Тому це саме
+          ТИМЧАСОВО: щойно займемось мобільною версткою — повернути, розкоментувавши
+          цей блок І дописавши import { CategoryTiles } from "@/components/home/category-tiles".
       <div className="lg:hidden">
         <CategoryTiles categories={categories} locale={locale} title={t("home.categories")} />
       </div>
+      */}
 
       {/* ── Бренди: вхід у каталог для тих, хто прийшов «за Bosch» ────── */}
       <BrandStrip brands={brands} locale={locale} title={t("home.brands")} />
