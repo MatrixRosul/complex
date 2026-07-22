@@ -338,9 +338,7 @@ def mobile_preview(banner) -> SafeString:
     mobile = getattr(banner, "image_mobile", None)
 
     if not image and not mobile:
-        return mark_safe(
-            '<span style="opacity:.5">Спершу завантажте зображення.</span>'
-        )
+        return mark_safe('<span style="opacity:.5">Спершу завантажте зображення.</span>')
 
     shown = mobile or image
     frame = format_html(

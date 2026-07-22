@@ -276,30 +276,36 @@ def _root(external_id: str, name: str) -> Category:
     return category
 
 
-def test_by_category_returns_three_biggest_roots(brand: Brand) -> None:
-    """Три НАЙБІЛЬШІ непорожні кореневі категорії — саме те, чим зараз наповнена база.
+def test_by_category_follows_catalog_order_not_size(brand: Brand) -> None:
+    """Порядок секцій = порядок КАТАЛОГУ (`sort_order`), а НЕ кількість товарів.
 
-    Це заміна порожнім «Хітам» і «Акціям»: у базі 0 товарів з is_featured і 0 зі старою ціною,
-    тому головна, зібрана лише з кураторських добірок, — це чотири заголовки і нічого під ними.
+    ⚠️ Раніше тут сортувалось за розміром, і маленька категорія просто не існувала для
+    головної: «Аудіо» з 7 товарами не потрапляла в трійку, хоча в шапці й у каталозі
+    стоїть ПЕРШОЮ. Замовник це помітив. Тепер джерело порядку одне — `sort_order`
+    категорії, тож послідовність скрізь на сайті однакова й керується з адмінки.
     """
+    audio = _root("300", "Аудіо")  # найменша, але перша за sort_order
+    audio.sort_order = 1
+    audio.save()
     big = _root("100", "Вбудована техніка")
+    big.sort_order = 2
+    big.save()
     mid = _root("200", "Дрібна техніка")
-    small = _root("300", "Аудіо")
-    tiny = _root("400", "Краса")  # 4-та за розміром — у трійку не входить
+    mid.sort_order = 3
+    mid.save()
 
     for i in range(4):
         _product(big, brand, f"BIG{i}")
     for i in range(3):
         _product(mid, brand, f"MID{i}")
     for i in range(2):
-        _product(small, brand, f"SML{i}")
-    _product(tiny, brand, "TINY")
+        _product(audio, brand, f"SML{i}")
 
     blocks = get_collections("uk")["by_category"]
 
-    assert [b["id"] for b in blocks] == [big.pk, mid.pk, small.pk]
-    assert [b["name"] for b in blocks] == ["Вбудована техніка", "Дрібна техніка", "Аудіо"]
-    assert [len(b["products"]) for b in blocks] == [4, 3, 2]
+    # Найменша категорія — ПЕРША, бо так стоїть у каталозі.
+    assert [b["name"] for b in blocks] == ["Аудіо", "Вбудована техніка", "Дрібна техніка"]
+    assert [len(b["products"]) for b in blocks] == [2, 4, 3]
 
 
 def test_by_category_skips_empty_categories(brand: Brand) -> None:
