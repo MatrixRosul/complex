@@ -692,6 +692,36 @@ def _tool_search_products(data: dict[str, Any], lang: str) -> ToolOutcome:
         "catalog_url": link,
     }
     if not products:
+        # ⚡ РОЗУМНИЙ ПОРОЖНІЙ РЕЗУЛЬТАТ. Найдорожчий патерн у логах — «нічого до X грн»:
+        # модель отримувала нуль, і мусила шукати ВДРУГЕ вже без межі, а кожен зайвий прохід
+        # перечитує весь контекст (тому один такий діалог коштував $0.04 замість $0.01). Тому
+        # коли пусто САМЕ через ВЕРХНЮ цінову межу — дотягуємо найдешевші понад неї ТУТ ЖЕ, одним
+        # проходом. Це і дешевше, і чесніше: модель одразу бачить реальну підлогу цін і каже
+        # «до X немає, найдешевша — Y», не вигадуючи (червона лінія 1.1 лишається в силі).
+        # Лише price_max: для price_min («від X») сортування price_asc дало б найдешевші —
+        # тобто найдальші від запиту, а не найближчі; це окремий рідкісний кейс, не чіпаємо.
+        if price_max is not None:
+            fallback = listing.CatalogFilters(
+                category=category,
+                selected=selected,
+                price_min=None,
+                price_max=None,
+                sort="price_asc",  # найдешевші перші — це і є найближче до бюджету
+                page=1,
+                page_size=3,
+                search_qs=search.search_products(query, lang) if query else None,
+            )
+            nearest = [_card(p, lang, meta) for p in listing.list_catalog(fallback)["items"]]
+            if nearest:
+                products = nearest
+                payload["shown"] = len(nearest)
+                payload["products"] = nearest
+                payload["note"] = (
+                    "За заданою ціною нічого немає. Нижче — НАЙДЕШЕВШІ доступні товари ПОНАД цю "
+                    "межу (не в межах бюджету!). Скажи чесно: за вказаною ціною нема, а найдешевший "
+                    "варіант — стільки-то. Не вигадуй, що вони в межах бюджету."
+                )
+                return _ok(payload, products=nearest, link=link)
         payload["note"] = (
             "Нічого не знайдено. Не вигадуй товарів: скажи прямо, що за такими умовами нічого "
             "немає, і запропонуй прибрати або послабити один із фільтрів."

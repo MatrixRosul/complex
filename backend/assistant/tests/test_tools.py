@@ -435,3 +435,24 @@ def test_dispatch_survives_broken_input(product_with_specs: Product) -> None:
 
     assert outcome["is_error"] is True
     assert outcome["link"] is None
+
+
+def test_search_price_max_empty_returns_cheapest_above(product_with_specs: Product) -> None:
+    """🔴 Порожньо ЧЕРЕЗ ВЕРХНЮ межу → інструмент сам дотягує найдешевші понад неї.
+
+    Це вбиває найдорожчий патерн (модель шукала вдруге без межі → +прохід → +$0.03).
+    Товар у фікстурі коштує 27445; шукаємо «до 1000» → нуль у межах, але інструмент
+    має повернути найдешевший товар (той самий) + чесну примітку «понад бюджет».
+    """
+    outcome = tools.dispatch(
+        "search_products",
+        {"query": "Холодильник", "price_max": 1000},
+        "uk",
+    )
+    payload = unwrap(outcome)
+
+    assert outcome["is_error"] is False
+    assert payload["total"] == 0  # у МЕЖАХ бюджету — нуль
+    assert payload["products"], "інструмент мусив дотягнути найдешевші понад межу"
+    assert outcome["products"], "картки понад межу мають піти й у SSE"
+    assert "понад" in payload["note"].lower() or "межу" in payload["note"].lower()
