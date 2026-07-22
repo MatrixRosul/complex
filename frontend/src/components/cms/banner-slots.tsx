@@ -1,4 +1,5 @@
 import { BannerCard } from "@/components/cms/banner-card";
+import { cn } from "@/lib/utils";
 import type { Locale } from "@/i18n/config";
 import type { BannerOut } from "@/lib/api/types";
 
@@ -24,12 +25,37 @@ export function PromoBanner({ banner, locale }: { banner: BannerOut; locale: Loc
       banner={banner}
       locale={locale}
       priority
-      sizes="(max-width: 1024px) 100vw, 66vw"
-      className="group h-full min-h-[300px] w-full flex-1 justify-end rounded-none border-0 p-6"
+      sizes="(max-width: 1024px) 100vw, 22vw"
+      className="group h-full min-h-[300px] w-full justify-end rounded-none border-0 p-4"
     >
-      <h2 className="text-h2 banner-text">{banner.title}</h2>
-      <p className="max-w-md text-sm banner-text-muted">{banner.subtitle}</p>
+      <h2 className="text-h3 banner-text">{banner.title}</h2>
+      <p className="text-sm banner-text-muted">{banner.subtitle}</p>
     </BannerCard>
+  );
+}
+
+/**
+ * РЯД ПРОМО-БАНЕРІВ праворуч від каталогу — до трьох в один ряд (референс denika.ua:
+ * там це три вертикальні картки поруч, а не один широкий банер).
+ *
+ * ⚠️ Один банер займає весь ряд, два — половини, три — третини. Тобто замовнику не
+ * треба нічого налаштовувати: скільки завів, так і ляже. Розділені тонкою лінією, бо
+ * весь блок стоїть усередині суцільної панелі каталогу з єдиною зовнішньою рамкою.
+ */
+export function PromoRow({ banners, locale }: { banners: BannerOut[]; locale: Locale }) {
+  if (banners.length === 0) return null;
+
+  return (
+    <div className="flex h-full w-full">
+      {banners.map((banner, i) => (
+        <div
+          key={banner.id}
+          className={cn("min-w-0 flex-1", i > 0 && "border-l border-border")}
+        >
+          <PromoBanner banner={banner} locale={locale} />
+        </div>
+      ))}
+    </div>
   );
 }
 

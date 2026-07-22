@@ -5,7 +5,7 @@ import { ArrowRight } from "lucide-react";
 import { ProductChip } from "@/components/assistant/product-chip";
 import { useT } from "@/i18n/provider";
 import { localePath, type Locale } from "@/i18n/config";
-import type { AssistantMessage } from "@/store/assistant";
+import { useAssistantStore, type AssistantMessage } from "@/store/assistant";
 import { cn } from "@/lib/utils";
 
 /**
@@ -24,6 +24,7 @@ export function ChatMessage({
   message: AssistantMessage;
   locale: Locale;
 }) {
+  const closeChat = useAssistantStore((state) => state.close);
   const t = useT();
   const isUser = message.role === "user";
   const isEmptyPending = !isUser && !message.isError && message.text.length === 0;
@@ -55,6 +56,10 @@ export function ChatMessage({
       {message.link ? (
         <Link
           href={localePath(locale, message.link.url)}
+          // ⚠️ ЗАКРИВАЄМО ЧАТ ПРИ ПЕРЕХОДІ. Панель — оверлей поверх сторінки: без цього
+          // перехід відбувався, але людина далі бачила чат і не розуміла, чи її взагалі
+          // кудись перекинуло. Тепер клік = видимий результат.
+          onClick={closeChat}
           className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
         >
           {message.link.label ?? t("assistant.panel.viewCatalog")}

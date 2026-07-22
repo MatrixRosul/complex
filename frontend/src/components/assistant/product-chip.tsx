@@ -8,6 +8,7 @@ import { Price } from "@/components/product/price";
 import { mediaUrl } from "@/lib/media";
 import { localePath, type Locale } from "@/i18n/config";
 import type { AssistantProduct } from "@/lib/api/assistant";
+import { useAssistantStore } from "@/store/assistant";
 
 /**
  * Міні-картка товару всередині повідомлення асистента.
@@ -32,11 +33,15 @@ export function ProductChip({
   product: AssistantProduct;
   locale: Locale;
 }) {
+  const closeChat = useAssistantStore((state) => state.close);
   const imageUrl = mediaUrl(product.image);
 
   return (
     <Link
       href={localePath(locale, product.url)}
+      // Той самий мотив, що й у посиланні на каталог: панель чату — оверлей, і якщо
+      // її не закрити, перехід на товар лишається непоміченим.
+      onClick={closeChat}
       className="flex items-center gap-3 rounded-lg border border-border bg-card p-2 transition-colors hover:border-primary/40 hover:bg-muted"
     >
       <div className="relative size-14 shrink-0 overflow-hidden rounded-md bg-muted">

@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { BannerCarousel } from "@/components/cms/banner-carousel";
-import { MobilePromo, PromoBanner, SideAd } from "@/components/cms/banner-slots";
+import { MobilePromo, PromoRow, SideAd } from "@/components/cms/banner-slots";
 import { BrandStrip } from "@/components/home/brand-strip";
 import { CatalogSidebar } from "@/components/home/catalog-sidebar";
 import { RecentlyViewed } from "@/components/home/recently-viewed";
@@ -78,6 +78,18 @@ export default async function HomePage({
       (b.placement === "home_promo" || b.placement === "home_slider"),
   );
 
+  /**
+   * ПО ТРИ В РЯД (референс denika.ua: праворуч від каталогу стоять три вертикальні
+   * банери поруч, а не один широкий). Групи — це слайди: 1-3 банери дають один слайд
+   * без стрілок, 4+ — карусель гортає наступну трійку. Так жоден заведений банер не
+   * лишається невидимим і водночас не треба вигадувати «скільки показувати».
+   */
+  const promoGroups = promoBanners.reduce<(typeof promoBanners)[]>((groups, banner, i) => {
+    if (i % 3 === 0) groups.push([]);
+    groups[groups.length - 1].push(banner);
+    return groups;
+  }, []);
+
   return (
     <div className="container-complex flex flex-col gap-12 py-6">
       {/* ── Каталог зліва + права зона (промо / підгрупи+реклама) ─────────
@@ -88,10 +100,10 @@ export default async function HomePage({
         categories={categories}
         iconOf={emblemMap(categories)}
         promoBanner={
-          promoBanners.length > 0 ? (
+          promoGroups.length > 0 ? (
             <BannerCarousel
-              slides={promoBanners.map((b) => (
-                <PromoBanner key={b.id} banner={b} locale={locale} />
+              slides={promoGroups.map((group, i) => (
+                <PromoRow key={i} banners={group} locale={locale} />
               ))}
             />
           ) : null
