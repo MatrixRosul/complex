@@ -97,7 +97,7 @@ export function CategoryMegaMenu({
         size="xl"
         // Висота — під основний рядок (h-20): кнопка каталогу і поле пошуку мусять
         // стояти в одну лінію, інакше рядок розсипається на два різні розміри.
-        className="h-12 gap-2 px-5 text-base"
+        className="h-11 gap-2 px-4 text-base"
         aria-expanded={open}
         aria-haspopup="true"
         onClick={toggle}

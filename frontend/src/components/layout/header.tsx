@@ -146,12 +146,16 @@ export async function Header({ locale }: { locale: Locale }) {
       </div>
 
       {/* ── Основний рядок ──────────────────────────────────────────────
-          ⚠️ h-20 (80 px) замість h-16, і це НЕ «просто побільше». Замовник: рядок
-          «губився під стрічкою» — синя смуга вгорі темна й контрастна, тому при
-          однаковій вазі око читало головним її, а не логотип із пошуком. Тепер
-          основний рядок у 1.7× вищий за смугу, і ієрархія однозначна. Разом із
-          ним пропорційно виросли лого, кнопка «Каталог», пошук і дії. */}
-      <div className="container-complex flex h-20 items-center gap-4">
+          ⚠️ h-18 (72 px) замість початкових h-16, і це НЕ «просто побільше».
+          Замовник: рядок «губився під стрічкою» — синя смуга вгорі темна й
+          контрастна, тому при однаковій вазі око читало головним її, а не
+          логотип із пошуком.
+          ⚠️ Проміжна цифра, а не максимум: на h-20 замовник сказав «сильно
+          збільшилось, щоб в екран вміщалось». Шапка липка (sticky), тож кожен
+          зайвий піксель тут з'їдає видиму частину КОЖНОЇ сторінки, а не лише
+          головної. 72 px тримає рядок вищим за смугу в 1.5×, чого для ієрархії
+          досить, і повертає екрану 8 px. */}
+      <div className="container-complex flex h-18 items-center gap-4">
         <MobileBurgerMenu
           categories={categories}
           menuItems={menuItems}
@@ -182,7 +186,7 @@ export async function Header({ locale }: { locale: Locale }) {
             width={720}
             height={222}
             priority
-            className="h-11 w-auto md:h-13 dark:hidden"
+            className="h-10 w-auto md:h-11 dark:hidden"
           />
           <Image
             src="/images/logo-light.png"
@@ -191,7 +195,7 @@ export async function Header({ locale }: { locale: Locale }) {
             width={720}
             height={222}
             priority
-            className="hidden h-11 w-auto md:h-13 dark:block"
+            className="hidden h-10 w-auto md:h-11 dark:block"
           />
         </Link>
 
