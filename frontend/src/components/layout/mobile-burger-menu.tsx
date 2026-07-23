@@ -96,6 +96,14 @@ export function MobileBurgerMenu({
 
         {level === "root" ? (
           <div className="flex flex-col">
+            {/* ⚠️ ШАПКА ПАНЕЛІ — щоб кнопка закриття (Sheet малює її `absolute top-3
+                right-3`) мала свій простір. Без неї ✕ падав на шеврон `›` першого
+                рядка «Каталог» і накладався на нього — саме це й було на мобільному.
+                Порожній рядок висотою h-14 віддає верхній правий кут під ✕, а меню
+                починається нижче. `pr-12` тримає заголовок від наїзду на ✕. */}
+            <div className="flex h-14 items-center border-b border-border px-4 pr-12">
+              <span className="text-base font-semibold text-foreground">{t("nav.menu")}</span>
+            </div>
             <MenuRow
               icon={<LayoutGrid className="size-5" />}
               label={t("nav.catalog")}
@@ -265,10 +273,12 @@ function SubLevel({
 }) {
   return (
     <div className="flex animate-in flex-col slide-in-from-right-4 duration-200">
+      {/* pr-12 — той самий зазор під кнопку закриття Sheet, що й у шапці кореня:
+          довгий заголовок («Порівняння») інакше заповз би під ✕. */}
       <button
         type="button"
         onClick={onBack}
-        className="flex h-14 items-center gap-2 border-b border-border px-4 text-base font-semibold text-foreground"
+        className="flex h-14 items-center gap-2 border-b border-border px-4 pr-12 text-base font-semibold text-foreground"
       >
         <ChevronLeft aria-hidden className="size-5" />
         {title}
