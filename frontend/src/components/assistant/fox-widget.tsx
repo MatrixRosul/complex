@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Fox } from "@/components/assistant/fox";
+import { Mascot } from "@/components/assistant/mascot";
 import { ChatPanel } from "@/components/assistant/chat-panel";
 import { FoxNudge } from "@/components/assistant/fox-nudge";
 import { useNudgeTrigger } from "@/components/assistant/use-nudge";
@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 type FoxVisualState = "idle" | "hover" | "thinking" | "talking";
 
 /**
- * Плаваюча кнопка-лисичка (fixed bottom-right) + чат-панель.
+ * Плаваюча кнопка з маскотом (fixed bottom-right) + чат-панель.
  *
  * ⚠️ z-index (PLAN §3). Кнопка — `z-40`, свідомо НИЖЧЕ за Dialog/Sheet (`z-50`):
  * якщо користувач відкрив кошик чи фільтри, той шар важливіший за виклик асистента,
@@ -63,7 +63,7 @@ export function FoxWidget() {
 
   return (
     <>
-      {/* Одноразовий «махнути» кнопкою в момент появи бульбашки — зв'язує бульбашку з лисичкою. */}
+      {/* Одноразовий «махнути» кнопкою в момент появи бульбашки — зв'язує бульбашку з маскотом. */}
       <style>{WIGGLE_KEYFRAMES}</style>
       <button
         type="button"
@@ -75,8 +75,15 @@ export function FoxWidget() {
         aria-label={t(isOpen ? "assistant.widget.closeLabel" : "assistant.widget.openLabel")}
         aria-expanded={isOpen}
         className={cn(
-          // size-14 = 56px — з запасом над мінімальним тач-таргетом 44px (PLAN §3).
-          "fixed right-4 bottom-4 z-40 flex size-14 items-center justify-center rounded-full",
+          // 56×72 — тач-таргет із запасом над мінімальними 44px (PLAN §3).
+          //
+          // ⚠️ ПОРТРЕТНА, і rounded-2xl замість rounded-full. Кругла кнопка 56×56
+          // була під лисичку: її SVG вписувався в коло. Кіт сидить — його пропорція
+          // 160:264, і в квадрат він влазить лише обрізаний по шию. Спершу тут і
+          // стояв портрет-голова, але кіт має бути ВЕСЬ: хвіст — головний рух усієї
+          // анімації, без нього лишається майже нерухома морда. Тому оправу
+          // витягнули під пропорцію маскота, а не маскота під оправу.
+          "fixed right-4 bottom-4 z-40 flex h-18 w-14 items-center justify-center rounded-2xl",
           "bg-card shadow-lg ring-1 ring-border transition-transform duration-150",
           "hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none",
           "motion-reduce:transition-none motion-reduce:hover:translate-y-0",
@@ -84,7 +91,9 @@ export function FoxWidget() {
           nudgeVisible && "cx-fox-wiggle",
         )}
       >
-        <Fox state={foxState} />
+        {/* Висота 64px → ширина 39px за aspect-ratio самого маскота; у плашці
+            56×72 це дає ~4px полів згори/знизу і ~8px з боків. */}
+        <Mascot state={foxState} className="h-16 w-auto" />
         {showDot ? (
           <span
             aria-hidden="true"

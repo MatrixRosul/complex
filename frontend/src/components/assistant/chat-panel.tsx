@@ -5,7 +5,7 @@ import { Send, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Fox } from "@/components/assistant/fox";
+import { Mascot } from "@/components/assistant/mascot";
 import { ChatMessage } from "@/components/assistant/chat-message";
 import { streamChat, type AssistantEvent } from "@/lib/api/assistant";
 import { ApiError } from "@/lib/api/types";
@@ -177,7 +177,9 @@ export function ChatPanel({ onClose }: { onClose: () => void }) {
     >
       {/* ── Хедер ─────────────────────────────────────────────────────── */}
       <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-3">
-        <Fox state={headerFoxState} className="size-8 shrink-0" />
+        {/* h-10 (40px) ≈ висота двох рядків заголовка поруч — кіт цілком, не
+            обрізаний по морду, і хедер від нього майже не росте. */}
+        <Mascot state={headerFoxState} className="h-10 w-auto shrink-0" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-foreground">
             {t("assistant.panel.title")}
@@ -257,7 +259,8 @@ function EmptyState({ onPick }: { onPick: (text: string) => void }) {
 
   return (
     <div className="flex flex-col items-center gap-4 py-6 text-center">
-      <Fox state="idle" className="size-16" />
+      {/* Тут найбільше місця — беремо найбільший розмір кота. */}
+      <Mascot state="idle" className="h-28 w-auto" />
       <div>
         <p className="text-sm font-medium text-foreground">{t("assistant.empty.title")}</p>
         <p className="mt-1 text-xs text-muted-foreground">{t("assistant.empty.subtitle")}</p>
