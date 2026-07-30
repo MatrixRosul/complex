@@ -89,12 +89,12 @@ jobs:
 
     services:
       postgres:
-        # Прод — 16, локально в розробника — 14 (ARCHITECTURE §5, свідомий ризик).
+        # Прод — 17, локально в розробника — 14 (ARCHITECTURE §5, свідомий ризик).
         # CI тримаємо на прод-версії: він — арбітр «поїде на проді чи ні».
         # ⚠️ Якщо міграція використає щось із PG15+ (nulls_distinct!), CI цього
         #    НЕ спіймає — спіймає розробник, у якого `migrate` впаде локально.
         #    Саме тому ADR-016 забороняє nulls_distinct на рівні коду, а не CI.
-        image: postgres:16
+        image: postgres:17
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
