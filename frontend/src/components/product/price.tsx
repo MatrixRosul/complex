@@ -22,7 +22,8 @@ export function Price({
   price: string;
   oldPrice?: string | null;
   locale: Locale;
-  size?: "lg" | "xl";
+  /** "2xl" — тільки для плитки ціни на сторінці товару (див. --text-price-2xl). */
+  size?: "lg" | "xl" | "2xl";
   className?: string;
   reserveOldPriceSpace?: boolean;
 }) {
@@ -46,7 +47,9 @@ export function Price({
       <div
         className={cn(
           "price",
-          size === "xl" ? "text-price-xl" : "text-price-lg",
+          size === "2xl" && "text-price-2xl",
+          size === "xl" && "text-price-xl",
+          size === "lg" && "text-price-lg",
           hasDiscount ? "text-price" : "text-price-regular",
         )}
       >

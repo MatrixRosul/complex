@@ -304,7 +304,9 @@ export function CompareTable({ products }: { products: ProductDetail[] }) {
                     <th
                       scope="colgroup"
                       colSpan={products.length + 1}
-                      className="sticky left-0 bg-background p-3 text-left text-h3 text-foreground"
+                      // bg-card: заголовок групи «прилипає» ліворуч і мусить бути
+                      // непрозорим на тлі плитки таблиці, а не сірого полотна.
+                      className="sticky left-0 bg-card p-3 text-left text-h3 text-foreground"
                     >
                       {group}
                     </th>

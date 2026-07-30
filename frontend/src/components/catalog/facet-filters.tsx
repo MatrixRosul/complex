@@ -199,7 +199,7 @@ function PriceInput({
           if (e.key === "Enter") e.currentTarget.blur();
         }}
         // border-input (3:1), не border-border — це контрол.
-        className="h-8 w-full min-w-0 rounded-md border border-input bg-background px-2 text-sm text-foreground tnum focus-visible:border-ring focus-visible:outline-none"
+        className="h-8 w-full min-w-0 rounded-md border border-input bg-card px-2 text-sm text-foreground tnum focus-visible:border-ring focus-visible:outline-none"
       />
     </label>
   );
@@ -290,7 +290,7 @@ function FacetBlock({
               onChange={(e) => setQuery(e.target.value)}
               placeholder={t("catalog.searchInFacet")}
               aria-label={`${group.label}: ${t("catalog.searchInFacet")}`}
-              className="h-8 rounded-md border border-input bg-background px-2 text-sm focus-visible:border-ring focus-visible:outline-none"
+              className="h-8 rounded-md border border-input bg-card px-2 text-sm focus-visible:border-ring focus-visible:outline-none"
             />
           )}
 

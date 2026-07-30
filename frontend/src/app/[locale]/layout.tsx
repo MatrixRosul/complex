@@ -6,7 +6,7 @@ import { Footer } from "@/components/layout/footer";
 import { Providers } from "@/components/providers";
 import { getDictionary } from "@/i18n/dictionary";
 import { isLocale, localeHreflang, locales, type Locale } from "@/i18n/config";
-import { inter } from "../fonts";
+import { montserrat } from "../fonts";
 import "../globals.css";
 
 /**
@@ -89,7 +89,7 @@ export default async function RootLayout({
   return (
     // suppressHydrationWarning — для next-themes: його інлайн-скрипт дописує
     // class="dark" ДО гідратації (щоб не було спалаху білим).
-    <html lang={locale} suppressHydrationWarning className={`${inter.variable} h-full`}>
+    <html lang={locale} suppressHydrationWarning className={`${montserrat.variable} h-full`}>
       <body className="flex min-h-full flex-col antialiased">
         <Providers locale={locale} dict={dict}>
           <Header locale={locale} />

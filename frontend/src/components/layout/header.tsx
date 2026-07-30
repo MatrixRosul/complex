@@ -82,7 +82,9 @@ export async function Header({ locale }: { locale: Locale }) {
   }));
 
   return (
-    <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur">
+    // bg-card, а не bg-background: полотно сторінки тепер сіре («Сайт §1»), і шапка на
+    // ньому мусить читатись білою плитою — інакше вона зливається зі скролом під собою.
+    <header className="sticky top-0 z-40 border-b border-border bg-card/95 backdrop-blur">
       {/* ── Верхня смуга: локація · інфо-сторінки · телефон + мова + тема ──
           Фон — брендовий темно-синій (референс denika.ua). Час роботи, який стояв тут
           раніше, прибраний свідомо: смуга тепер тримає три зони, і четверта не влазить
@@ -163,9 +165,34 @@ export async function Header({ locale }: { locale: Locale }) {
           iconOf={iconOf}
         />
 
+        {/* ── Лого як ПОВНОЦІННЕ посилання (задача «Сайт §7») ────────────────
+         *
+         * Замовник описав три симптоми: «не працює як гіперпосилання», «сторінка не
+         * оновлюється» і «при наведенні розпізнається як текст, який можна скопіювати».
+         * Розбір по одному, бо причини різні:
+         *
+         * 1. НЕМА АФОРДАНСУ. `<Link>` тут стояв і раніше — тобто перехід працював, і
+         *    замовник це підтвердив («повертає на домашню, як і має бути»). Бракувало
+         *    саме СИГНАЛУ, що це посилання: ні курсора-руки гарантовано, ні реакції на
+         *    ховер. Тепер є явний `cursor-pointer` і легке приглушення на ховері.
+         *
+         * 2. «РОЗПІЗНАЄТЬСЯ ЯК ТЕКСТ, ЯКИЙ МОЖНА СКОПІЮВАТИ». Це не ілюзія: <img> у
+         *    браузері виділяється разом із сусіднім текстом і тягнеться мишкою як окремий
+         *    об'єкт (нативний drag зображення). Коли протягнути курсор через лого, воно
+         *    підсвічується синім — рівно «текст, який можна скопіювати». Лікується
+         *    `select-none` на посиланні + `draggable={false}` на обох картинках.
+         *    `pointer-events-none` на картинках додано, щоб ховер і клік завжди діставались
+         *    саме <a>, а не <img> усередині нього.
+         *
+         * 3. «СТОРІНКА НЕ ОНОВЛЮЄТЬСЯ» — а це не баг, і чинити його НЕ треба. Next робить
+         *    клієнтську навігацію: маршрут змінюється без перезавантаження, тому екран не
+         *    блимає. Замінити це на <a href> з повним релоудом означало б навмисно
+         *    зробити сайт повільнішим. Якщо замовник наполягатиме — це рішення про
+         *    продукт, а не правка верстки; питання винесено в звіт, а не вирішене тихцем.
+         */}
         <Link
           href={localePath(locale)}
-          className="flex shrink-0 items-center"
+          className="flex shrink-0 cursor-pointer items-center transition-opacity select-none hover:opacity-80"
           aria-label={t("brand.name")}
         >
           {/*
@@ -186,7 +213,8 @@ export async function Header({ locale }: { locale: Locale }) {
             width={720}
             height={222}
             priority
-            className="h-12 w-auto md:h-14 dark:hidden"
+            draggable={false}
+            className="pointer-events-none h-12 w-auto md:h-14 dark:hidden"
           />
           <Image
             src="/images/logo-light.png"
@@ -195,7 +223,8 @@ export async function Header({ locale }: { locale: Locale }) {
             width={720}
             height={222}
             priority
-            className="hidden h-12 w-auto md:h-14 dark:block"
+            draggable={false}
+            className="pointer-events-none hidden h-12 w-auto md:h-14 dark:block"
           />
         </Link>
 

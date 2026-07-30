@@ -283,7 +283,7 @@ export function CheckoutForm() {
               value={comment}
               onChange={(e) => setComment(e.target.value)}
               rows={3}
-              className="rounded-md border border-input bg-background p-3 text-sm focus-visible:border-ring focus-visible:outline-none"
+              className="rounded-md border border-input bg-card p-3 text-sm focus-visible:border-ring focus-visible:outline-none"
             />
           </label>
         </section>
@@ -332,7 +332,7 @@ export function CheckoutForm() {
                   }}
                   placeholder={t("checkout.cityPlaceholder")}
                   className={cn(
-                    "h-10 rounded-md border bg-background px-3 text-sm focus-visible:border-ring focus-visible:outline-none",
+                    "h-10 rounded-md border bg-card px-3 text-sm focus-visible:border-ring focus-visible:outline-none",
                     errors.city ? "border-destructive" : "border-input",
                   )}
                 />
@@ -370,7 +370,7 @@ export function CheckoutForm() {
                   <select
                     value={warehouseRef}
                     onChange={(e) => setWarehouseRef(e.target.value)}
-                    className="h-10 rounded-md border border-input bg-background px-2 text-sm focus-visible:border-ring focus-visible:outline-none"
+                    className="h-10 rounded-md border border-input bg-card px-2 text-sm focus-visible:border-ring focus-visible:outline-none"
                   >
                     {warehouses
                       .filter((w) =>
@@ -509,7 +509,7 @@ function Field({
         autoComplete={autoComplete}
         aria-invalid={Boolean(error)}
         className={cn(
-          "h-10 rounded-md border bg-background px-3 text-sm focus-visible:border-ring focus-visible:outline-none",
+          "h-10 rounded-md border bg-card px-3 text-sm focus-visible:border-ring focus-visible:outline-none",
           error ? "border-destructive" : "border-input",
         )}
       />

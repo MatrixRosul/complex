@@ -123,7 +123,14 @@ function CollapsibleSection({
   const contentId = useId();
 
   return (
-    <div className="flex flex-col">
+    /* ⚠️ bg-card ТУТ ОБОВ'ЯЗКОВИЙ, І НЕ ЛИШЕ ЗАРАДИ «плиткової подачі» («Сайт §1»).
+     * `.fade-bottom` (градієнт над згорнутим блоком) прописаний як
+     * `linear-gradient(transparent → var(--card))`, тобто він розтушовує текст У БІЛЕ.
+     * Поки полотно сторінки було білим, блок міг лежати на ньому без власного фону і
+     * градієнт сходився з фоном ідеально. З сірим полотном той самий градієнт малював би
+     * білу пляму на сірому — видимий світлий мазок під характеристиками. Тобто плитка тут
+     * не косметика: вона повертає градієнту поверхню, під яку його розраховано. */
+    <div className="flex flex-col rounded-lg border border-border bg-card p-4">
       <h2 className="border-b border-border pb-3 text-h2 text-foreground">{title}</h2>
 
       {empty ? (

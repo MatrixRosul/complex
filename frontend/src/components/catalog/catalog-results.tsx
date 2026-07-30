@@ -43,7 +43,15 @@ export function CatalogResults({
         // прокрутки, а вертикальна лягала просто на лічильники товарів біля брендів.
         // Тепер по горизонталі не скролиться взагалі, а відступ справа лишає смузі
         // власне місце — цифри більше не перекриваються.
-        className="sticky top-32 hidden h-fit max-h-[calc(100vh-9rem)] w-[280px] shrink-0 overflow-y-auto overflow-x-hidden pr-3 lg:block"
+        // ⚠️ bg-card + рамка з'явились разом із сірим полотном («Сайт §1»): колонка
+        // фасетів була ЄДИНИМ великим блоком каталогу без власної поверхні, і на сірому
+        // читалась як «фільтри не доробили». Товари праворуч уже плитки — сайдбар мусив
+        // стати нею теж.
+        // Горизонтальні відступи pl-4/pr-3, а НЕ p-4: pr-3 із коментаря вище лишається
+        // недоторканим (він тримає місце під вертикальну смугу прокрутки, інакше цифри
+        // біля брендів знову перекриються), а зліва додано рівно стільки ж, скільки в
+        // інших плитках.
+        className="sticky top-32 hidden h-fit max-h-[calc(100vh-9rem)] w-[280px] shrink-0 overflow-y-auto overflow-x-hidden rounded-lg border border-border bg-card py-4 pl-4 pr-3 lg:block"
       >
         <FacetFilters facets={data.facets} priceRange={data.price_range} />
       </aside>

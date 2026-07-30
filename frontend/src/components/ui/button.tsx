@@ -21,8 +21,11 @@ const buttonVariants = cva(
         // Друга дія («Купити в 1 клік») — нейтральний контраст, не акцент.
         contrast:
           "bg-contrast text-contrast-foreground hover:bg-contrast/90 active:bg-contrast/80",
+        // bg-card, а не bg-background: полотно сторінки сіре («Сайт §1»), і кнопка з
+        // обводкою мусить лишатись білою — інакше вона розчиняється у фоні й перестає
+        // читатись як клікабельна.
         outline:
-          "border-border bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
+          "border-border bg-card hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
         secondary:
           "bg-secondary text-secondary-foreground hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)] aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
         ghost:

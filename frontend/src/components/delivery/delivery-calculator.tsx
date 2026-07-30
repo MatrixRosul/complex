@@ -142,7 +142,9 @@ export function DeliveryCalculator({ product }: { product: ProductDetail }) {
       <button
         type="button"
         onClick={() => setExpanded(true)}
-        className="flex w-full items-center gap-2 rounded-lg border border-border p-4 text-left text-sm font-medium text-foreground transition-colors hover:border-input"
+        // bg-card: третя плитка правої колонки. Без власного фону блок лежав би прямо на
+        // сірому полотні («Сайт §1») і читався б як провал між плитками ціни й характеристик.
+        className="flex w-full items-center gap-2 rounded-lg border border-border bg-card p-4 text-left text-sm font-medium text-foreground transition-colors hover:border-input"
       >
         <Truck aria-hidden className="size-5 text-muted-foreground" />
         {t("delivery.calculate")}
@@ -151,7 +153,7 @@ export function DeliveryCalculator({ product }: { product: ProductDetail }) {
   }
 
   return (
-    <section className="flex flex-col gap-3 rounded-lg border border-border p-4">
+    <section className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4">
       <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
         <Truck aria-hidden className="size-4 text-muted-foreground" />
         {t("delivery.title")}
@@ -174,7 +176,7 @@ export function DeliveryCalculator({ product }: { product: ProductDetail }) {
             setCityQuery(e.target.value);
           }}
           placeholder={t("checkout.cityPlaceholder")}
-          className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:border-ring focus-visible:outline-none"
+          className="mt-1 h-10 w-full rounded-md border border-input bg-card px-3 text-sm focus-visible:border-ring focus-visible:outline-none"
         />
 
         {cities.length > 0 && (
@@ -238,7 +240,7 @@ export function DeliveryCalculator({ product }: { product: ProductDetail }) {
             <select
               value={warehouseRef}
               onChange={(e) => setWarehouseRef(e.target.value)}
-              className="h-10 rounded-md border border-input bg-background px-2 text-sm focus-visible:border-ring focus-visible:outline-none"
+              className="h-10 rounded-md border border-input bg-card px-2 text-sm focus-visible:border-ring focus-visible:outline-none"
             >
               {warehouses.map((w) => (
                 <option key={w.ref} value={w.ref}>

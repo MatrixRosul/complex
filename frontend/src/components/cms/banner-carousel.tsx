@@ -74,7 +74,7 @@ export function BannerCarousel({ slides }: { slides: ReactNode[] }) {
         type="button"
         onClick={() => go(index - 1)}
         aria-label={t("home.promoPrev")}
-        className="absolute left-3 top-1/2 z-10 -translate-y-1/2 rounded-full bg-background/85 p-2 text-foreground opacity-0 shadow-md transition-opacity hover:bg-background focus-visible:opacity-100 group-hover/carousel:opacity-100"
+        className="absolute left-3 top-1/2 z-10 -translate-y-1/2 rounded-full bg-card/85 p-2 text-foreground opacity-0 shadow-md transition-opacity hover:bg-card focus-visible:opacity-100 group-hover/carousel:opacity-100"
       >
         <ChevronLeft aria-hidden className="size-5" />
       </button>
@@ -82,7 +82,7 @@ export function BannerCarousel({ slides }: { slides: ReactNode[] }) {
         type="button"
         onClick={() => go(index + 1)}
         aria-label={t("home.promoNext")}
-        className="absolute right-3 top-1/2 z-10 -translate-y-1/2 rounded-full bg-background/85 p-2 text-foreground opacity-0 shadow-md transition-opacity hover:bg-background focus-visible:opacity-100 group-hover/carousel:opacity-100"
+        className="absolute right-3 top-1/2 z-10 -translate-y-1/2 rounded-full bg-card/85 p-2 text-foreground opacity-0 shadow-md transition-opacity hover:bg-card focus-visible:opacity-100 group-hover/carousel:opacity-100"
       >
         <ChevronRight aria-hidden className="size-5" />
       </button>

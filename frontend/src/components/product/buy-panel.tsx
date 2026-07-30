@@ -18,9 +18,8 @@ import { useWishlistStore } from "@/store/wishlist";
 import { useHydrated } from "@/hooks/use-hydrated";
 import type { ProductDetail } from "@/lib/api/types";
 
-import { AvailabilityBadge } from "./availability-badge";
 import { Price } from "./price";
-import { ConditionBadge, DiscountBadge } from "./product-badges";
+import { DiscountBadge } from "./product-badges";
 
 /**
  * Права колонка картки товару: код, статус, ціна, бейджі, кнопки дії.
@@ -56,28 +55,17 @@ export function BuyPanel({ product }: { product: ProductDetail }) {
       : null;
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* Код товару — над свічером варіантів (референс …_384). */}
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <span>{t("product.code")}:</span>
-        <span className="product-code font-medium text-foreground">{product.sku}</span>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
-        <AvailabilityBadge
-          availability={product.availability}
-          leadDays={product.order_lead_days}
-          variant="badge"
-        />
-        <ConditionBadge condition={product.condition} />
-      </div>
-
+    /* ДРУГА ПЛИТКА правої колонки — гроші й дії («Сайт §3»).
+     * Артикул і бейдж наявності, що стояли тут раніше, переїхали в <IdentityPanel>:
+     * це плитка «що це за прилад», а тут — «скільки і як купити». */
+    <div className="flex flex-col gap-4 rounded-lg border border-border bg-card p-4">
       <div className="flex flex-wrap items-end gap-3">
+        {/* size="2xl" — пряме прохання замовника: «плитка з ціною більшого шрифту». */}
         <Price
           price={product.price}
           oldPrice={product.old_price}
           locale={locale}
-          size="xl"
+          size="2xl"
           reserveOldPriceSpace={false}
         />
         {discount !== null && <DiscountBadge amount={discount} locale={locale} className="mb-2" />}
@@ -106,44 +94,59 @@ export function BuyPanel({ product }: { product: ProductDetail }) {
       )}
 
       <div className="flex flex-col gap-2">
-        <Button
-          size="xl"
-          variant={isOut ? "secondary" : "default"}
-          className="w-full"
-          /** Та сама логіка, що в картці товару: одразу показуємо кошик, а не тост. */
-          onClick={() => {
-            if (isOut) {
-              toast(t("product.notifyWhenAvailable"), { description: product.name });
-              return;
-            }
-            if (inCart) {
-              openCart(true);
-              return;
-            }
-            addAndOpenCart(product.id);
-          }}
-        >
-          {isOut
-            ? t("product.notifyWhenAvailable")
-            : hydrated && inCart
-              ? t("product.inCart")
-              : t("product.buy")}
-        </Button>
-
-        {/* Кнопка БЕЗ onClick була найгіршим із можливих станів: клік не робив АБСОЛЮТНО
-            нічого — ні модалки, ні тосту, ні помилки в консолі. Людина не могла зрозуміти,
-            чи спрацював клік, чи завис браузер. Тепер відкриває модалку з реальними
-            телефонами (див. OneClickDialog — там пояснено, чому саме телефони, а не форма). */}
-        {!isOut && (
+        {/* ── «Купити» + «Купити в 1 клік» — В ОДИН РЯД ────────────────────
+         *
+         * Замовник (Сайт §3): «у нас зараз довгі кнопки кожна з нового рядка, можна
+         * зробити менші в один ряд». Раніше обидві були `w-full` у flex-col, тобто
+         * два повноширинні прямокутники один під одним — на десктопі це майже 700 px
+         * ширини на кнопку, і панель через них розтягувалась удвічі.
+         *
+         * ⚠️ `flex-col sm:flex-row`, А НЕ `flex-row` НАЗАВЖДИ. «Купити в 1 клік» —
+         * 17 символів; разом із «Купити» в одному ряду вони влазять від 640 px. На
+         * телефоні (≈360 px) один ряд дав би або перенос тексту в дві строки всередині
+         * кнопки, або обрізаний підпис — тобто рівно ту саму проблему, тільки гіршу.
+         * До 640 px лишається стовпчик. Замовник дивився на десктоп — там ряд є.
+         */}
+        <div className="flex flex-col gap-2 sm:flex-row">
           <Button
-            variant="contrast"
             size="xl"
-            className="w-full"
-            onClick={() => setOneClickOpen(true)}
+            variant={isOut ? "secondary" : "default"}
+            className="w-full sm:flex-1"
+            /** Та сама логіка, що в картці товару: одразу показуємо кошик, а не тост. */
+            onClick={() => {
+              if (isOut) {
+                toast(t("product.notifyWhenAvailable"), { description: product.name });
+                return;
+              }
+              if (inCart) {
+                openCart(true);
+                return;
+              }
+              addAndOpenCart(product.id);
+            }}
           >
-            {t("product.buyOneClick")}
+            {isOut
+              ? t("product.notifyWhenAvailable")
+              : hydrated && inCart
+                ? t("product.inCart")
+                : t("product.buy")}
           </Button>
-        )}
+
+          {/* Кнопка БЕЗ onClick була найгіршим із можливих станів: клік не робив АБСОЛЮТНО
+              нічого — ні модалки, ні тосту, ні помилки в консолі. Людина не могла зрозуміти,
+              чи спрацював клік, чи завис браузер. Тепер відкриває модалку з реальними
+              телефонами (див. OneClickDialog — там пояснено, чому саме телефони, а не форма). */}
+          {!isOut && (
+            <Button
+              variant="contrast"
+              size="xl"
+              className="w-full sm:flex-1"
+              onClick={() => setOneClickOpen(true)}
+            >
+              {t("product.buyOneClick")}
+            </Button>
+          )}
+        </div>
 
         {/* ⚠️ Зворотна дія до «Купити». Прибрати товар з кошика можна було ЛИШЕ зі
             сторінки кошика: людина, що передумала прямо на картці товару, мусила йти
